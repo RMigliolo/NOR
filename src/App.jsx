@@ -1434,6 +1434,7 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
         String(item.codigo_punto || '').toLowerCase().includes(search.toLowerCase())
 
       const matchesFilter =
+        item.es_seccion ||
         filter === 'todos' ||
         (filter === 'pendientes' && !item.calificacion) ||
         (filter === 'criticos' && item.es_critico) ||
@@ -1638,13 +1639,34 @@ const clearRating = async (responseId) => {
 
       <div className="grid gap-4">
         {filteredItems.map((item) => {
-          const rating = getRatingConfig(item.calificacion)
-          const procesos = Array.isArray(item.procesos_evaluados)
-            ? item.procesos_evaluados
-            : []
+  if (item.es_seccion) {
+    return (
+      <motion.div
+        key={item.template_item_id}
+        initial={false}
+        animate={{ opacity: 1, y: 0 }}
+        className="rounded-[30px] bg-gradient-to-r from-slate-950 via-blue-950 to-cyan-900 text-white p-6 shadow-[0_16px_50px_rgba(15,23,42,0.18)] border border-white/20"
+      >
+        <div className="flex flex-col md:flex-row md:items-center gap-3">
+          <span className="inline-flex w-fit rounded-full bg-white/10 border border-white/20 px-3 py-1 text-xs font-black">
+            Sección {item.codigo_punto}
+          </span>
 
-          return (
-            <motion.div
+          <h2 className="text-2xl md:text-3xl font-black tracking-tight">
+            {item.criterio}
+          </h2>
+        </div>
+      </motion.div>
+    )
+  }
+
+  const rating = getRatingConfig(item.calificacion)
+  const procesos = Array.isArray(item.procesos_evaluados)
+    ? item.procesos_evaluados
+    : []
+
+  return (
+    <motion.div
               key={item.response_id}
               initial={false}
               animate={{ opacity: 1, y: 0 }}
