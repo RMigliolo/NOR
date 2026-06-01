@@ -1639,27 +1639,44 @@ const clearRating = async (responseId) => {
 
       <div className="grid gap-4">
         {filteredItems.map((item) => {
-  if (item.es_seccion) {
-    return (
-      <motion.div
-        key={item.template_item_id}
-        initial={false}
-        animate={{ opacity: 1, y: 0 }}
-        className="rounded-[30px] bg-gradient-to-r from-slate-950 via-blue-950 to-cyan-900 text-white p-6 shadow-[0_16px_50px_rgba(15,23,42,0.18)] border border-white/20"
-      >
-        <div className="flex flex-col md:flex-row md:items-center gap-3">
-          <span className="inline-flex w-fit rounded-full bg-white/10 border border-white/20 px-3 py-1 text-xs font-black">
-            Sección {item.codigo_punto}
-          </span>
+  if (item.tipo_item === 'seccion') {
+  return (
+    <motion.div
+      key={item.template_item_id}
+      initial={false}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-[30px] bg-gradient-to-r from-slate-950 via-blue-950 to-cyan-900 text-white p-6 shadow-[0_16px_50px_rgba(15,23,42,0.18)] border border-white/20"
+    >
+      <div className="flex flex-col md:flex-row md:items-center gap-4">
+        <span className="inline-flex w-fit rounded-full bg-white/10 border border-white/20 px-4 py-1.5 text-xs font-black uppercase tracking-widest">
+          Sección {item.codigo_punto}
+        </span>
 
-          <h2 className="text-2xl md:text-3xl font-black tracking-tight">
-            {item.criterio}
-          </h2>
-        </div>
-      </motion.div>
-    )
-  }
+        <h2 className="text-2xl md:text-3xl font-black tracking-tight">
+          {item.criterio}
+        </h2>
+      </div>
+    </motion.div>
+  )
+}
 
+if (item.tipo_item === 'subtitulo') {
+  return (
+    <motion.div
+      key={item.template_item_id}
+      initial={false}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-[24px] bg-cyan-50 border border-cyan-100 text-cyan-900 px-6 py-4"
+    >
+      <div className="text-sm uppercase tracking-[0.18em] font-black text-cyan-600 mb-1">
+        Subtítulo
+      </div>
+      <h3 className="text-xl font-black">
+        {item.criterio}
+      </h3>
+    </motion.div>
+  )
+}
   const rating = getRatingConfig(item.calificacion)
   const procesos = Array.isArray(item.procesos_evaluados)
     ? item.procesos_evaluados
