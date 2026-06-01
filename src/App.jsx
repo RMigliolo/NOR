@@ -1381,6 +1381,17 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
   const [filter, setFilter] = useState('todos')
   const [search, setSearch] = useState('')
 
+  const isSectionItem = (item) => {
+  const codigo = String(item.codigo_punto || '').trim()
+
+  if (item.tipo_item === 'seccion') return true
+  if (item.tipo_item === 'subtitulo') return true
+  if (item.es_seccion === true) return true
+  if (/^[0-9]+\.0$/.test(codigo)) return true
+
+  return false
+}
+
   const loadDetail = async () => {
     setLoading(true)
 
@@ -1434,9 +1445,11 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
         String(item.codigo_punto || '').toLowerCase().includes(search.toLowerCase())
 
       const matchesFilter =
-        item.es_seccion ||
-        filter === 'todos' ||
-        (filter === 'pendientes' && !item.calificacion) ||
+        filter === 'todos'
+    ? true
+    : isSectionItem(item)
+      ? true
+      : (filter === 'pendientes' && !item.calificacion) ||
         (filter === 'criticos' && item.es_critico) ||
         (filter === 'rojos' && item.calificacion === '0') ||
         (filter === 'amarillos' && ['1', '2'].includes(item.calificacion)) ||
@@ -1531,19 +1544,21 @@ const clearRating = async (responseId) => {
 }
 
   const updateComments = async (responseId, comentarios) => {
-    const { error } = await supabase
-      .from('audit_responses')
-      .update({
-        comentarios,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', responseId)
+  if (!responseId) return
 
-    if (error) {
-      console.error(error)
-      alert(`Error al guardar comentario: ${error.message}`)
-    }
+  const { error } = await supabase
+    .from('audit_responses')
+    .update({
+      comentarios,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', responseId)
+
+  if (error) {
+    console.error(error)
+    alert(`Error al guardar comentario: ${error.message}`)
   }
+}
 
   const toggleProceso = async (item, proceso) => {
     const actuales = Array.isArray(item.procesos_evaluados)
@@ -1639,44 +1654,46 @@ const clearRating = async (responseId) => {
 
       <div className="grid gap-4">
         {filteredItems.map((item) => {
-  if (item.tipo_item === 'seccion') {
-  return (
-    <motion.div
-      key={item.template_item_id}
-      initial={false}
-      animate={{ opacity: 1, y: 0 }}
-      className="rounded-[30px] bg-gradient-to-r from-slate-950 via-blue-950 to-cyan-900 text-white p-6 shadow-[0_16px_50px_rgba(15,23,42,0.18)] border border-white/20"
-    >
-      <div className="flex flex-col md:flex-row md:items-center gap-4">
-        <span className="inline-flex w-fit rounded-full bg-white/10 border border-white/20 px-4 py-1.5 text-xs font-black uppercase tracking-widest">
-          Sección {item.codigo_punto}
-        </span>
+  if (item.tipo_item === 'seccion' || /^[0-9]+\.0$/.test(String(item.codigo_punto || '').trim())) {
+    return (
+      <motion.div
+        key={item.template_item_id}
+        initial={false}
+        animate={{ opacity: 1, y: 0 }}
+        className="rounded-[30px] bg-gradient-to-r from-slate-950 via-blue-950 to-cyan-900 text-white p-6 md:p-8 shadow-[0_16px_50px_rgba(15,23,42,0.18)] border border-white/20"
+      >
+        <div className="flex flex-col gap-3">
+          <span className="inline-flex w-fit rounded-full bg-white/10 border border-white/20 px-4 py-1.5 text-xs font-black uppercase tracking-widest">
+            Sección {item.codigo_punto}
+          </span>
 
-        <h2 className="text-2xl md:text-3xl font-black tracking-tight">
+          <h2 className="text-2xl md:text-3xl font-black tracking-tight">
+            {item.criterio}
+          </h2>
+        </div>
+      </motion.div>
+    )
+  }
+
+  if (item.tipo_item === 'subtitulo') {
+    return (
+      <motion.div
+        key={item.template_item_id}
+        initial={false}
+        animate={{ opacity: 1, y: 0 }}
+        className="rounded-[24px] bg-cyan-50 border border-cyan-100 text-cyan-900 px-6 py-4"
+      >
+        <div className="text-sm uppercase tracking-[0.18em] font-black text-cyan-600 mb-1">
+          Subtítulo
+        </div>
+
+        <h3 className="text-xl font-black">
           {item.criterio}
-        </h2>
-      </div>
-    </motion.div>
-  )
-}
-
-if (item.tipo_item === 'subtitulo') {
-  return (
-    <motion.div
-      key={item.template_item_id}
-      initial={false}
-      animate={{ opacity: 1, y: 0 }}
-      className="rounded-[24px] bg-cyan-50 border border-cyan-100 text-cyan-900 px-6 py-4"
-    >
-      <div className="text-sm uppercase tracking-[0.18em] font-black text-cyan-600 mb-1">
-        Subtítulo
-      </div>
-      <h3 className="text-xl font-black">
-        {item.criterio}
-      </h3>
-    </motion.div>
-  )
-}
+        </h3>
+      </motion.div>
+    )
+  }
+  
   const rating = getRatingConfig(item.calificacion)
   const procesos = Array.isArray(item.procesos_evaluados)
     ? item.procesos_evaluados
