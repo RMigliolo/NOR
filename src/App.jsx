@@ -23,6 +23,11 @@ import {
   FileBarChart,
   Layers,
   Wrench,
+  Save,
+  Pencil,
+  Filter,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react'
 import {
   Bar,
@@ -1380,17 +1385,61 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
   const [savingId, setSavingId] = useState(null)
   const [filter, setFilter] = useState('todos')
   const [search, setSearch] = useState('')
+  const [selectedProcess, setSelectedProcess] = useState('todos')
+  const [collapsedSections, setCollapsedSections] = useState({})
+  const [commentDrafts, setCommentDrafts] = useState({})
+  const [editingComments, setEditingComments] = useState({})
 
   const isSectionItem = (item) => {
-  const codigo = String(item.codigo_punto || '').trim()
+    const codigo = String(item.codigo_punto || '').trim()
 
-  if (item.tipo_item === 'seccion') return true
-  if (item.tipo_item === 'subtitulo') return true
-  if (item.es_seccion === true) return true
-  if (/^[0-9]+\.0$/.test(codigo)) return true
+    if (item.tipo_item === 'seccion') return true
+    if (item.tipo_item === 'subtitulo') return true
+    if (item.es_seccion === true) return true
+    if (/^[0-9]+\.0$/.test(codigo)) return true
 
-  return false
-}
+    return false
+  }
+
+  const getItemProcesses = (item) => {
+    if (Array.isArray(item.procesos_aplicables)) {
+      return item.procesos_aplicables
+    }
+
+    if (Array.isArray(item.procesos_evaluados)) {
+      return item.procesos_evaluados
+    }
+
+    if (typeof item.procesos_aplicables === 'string') {
+      return item.procesos_aplicables
+        .split(';')
+        .map((p) => p.trim())
+        .filter(Boolean)
+    }
+
+    return []
+  }
+
+  const getSectionKeyFromItem = (item, currentSectionKey = null) => {
+    const codigo = String(item.codigo_punto || '').trim()
+
+    if (/^[0-9]+\.0$/.test(codigo)) return codigo
+
+    if (/^[0-9]+\.[0-9]+$/.test(codigo)) {
+      return `${codigo.split('.')[0]}.0`
+    }
+
+    return currentSectionKey
+  }
+
+  const toggleSection = (sectionKey) => {
+    if (!sectionKey) return
+
+    setCollapsedSections((prev) => ({
+      ...prev,
+      [sectionKey]: !prev[sectionKey],
+    }))
+  }
 
   const loadDetail = async () => {
     setLoading(true)
@@ -1438,129 +1487,170 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
   }, [auditId])
 
   const filteredItems = useMemo(() => {
+    let currentSectionKey = null
+
     return items.filter((item) => {
+      if (
+        item.tipo_item === 'seccion' ||
+        /^[0-9]+\.0$/.test(String(item.codigo_punto || '').trim())
+      ) {
+        currentSectionKey = getSectionKeyFromItem(item)
+      }
+
+      const sectionKey = getSectionKeyFromItem(item, currentSectionKey)
+      const sectionCollapsed = sectionKey ? collapsedSections[sectionKey] : false
+
       const matchesSearch =
         !search ||
         String(item.criterio || '').toLowerCase().includes(search.toLowerCase()) ||
         String(item.codigo_punto || '').toLowerCase().includes(search.toLowerCase())
 
+      if (!matchesSearch) return false
+
+      if (isSectionItem(item)) return true
+      if (sectionCollapsed) return false
+
+      const itemProcesses = getItemProcesses(item)
+
+      const matchesProcess =
+        selectedProcess === 'todos' ||
+        itemProcesses.includes(selectedProcess) ||
+        (Array.isArray(item.procesos_evaluados) &&
+          item.procesos_evaluados.includes(selectedProcess))
+
+      if (!matchesProcess) return false
+
       const matchesFilter =
         filter === 'todos'
-    ? true
-    : isSectionItem(item)
-      ? true
-      : (filter === 'pendientes' && !item.calificacion) ||
-        (filter === 'criticos' && item.es_critico) ||
-        (filter === 'rojos' && item.calificacion === '0') ||
-        (filter === 'amarillos' && ['1', '2'].includes(item.calificacion)) ||
-        (filter === 'verdes' && item.calificacion === '3') ||
-        (filter === 'na' && item.calificacion === 'NA')
+          ? true
+          : (filter === 'pendientes' && !item.calificacion) ||
+            (filter === 'criticos' && item.es_critico) ||
+            (filter === 'rojos' && item.calificacion === '0') ||
+            (filter === 'amarillos' && ['1', '2'].includes(item.calificacion)) ||
+            (filter === 'verdes' && item.calificacion === '3') ||
+            (filter === 'na' && item.calificacion === 'NA')
 
-      return matchesSearch && matchesFilter
+      return matchesFilter
     })
-  }, [items, filter, search])
+  }, [items, filter, search, selectedProcess, collapsedSections])
 
   const updateRating = async (responseId, value) => {
-  setSavingId(responseId)
+    if (!responseId) return
 
-  const requiereAccion = ['0', '1', '2'].includes(value)
+    setSavingId(responseId)
 
-  // Cambio visual inmediato y sutil, sin recargar toda la lista
-  setItems((prev) =>
-    prev.map((row) =>
-      row.response_id === responseId
-        ? {
-            ...row,
-            calificacion: value,
-            requiere_accion: requiereAccion,
-            color_visual:
-              value === '3'
-                ? 'verde'
-                : value === '2' || value === '1'
-                  ? 'amarillo'
-                  : value === '0'
-                    ? 'rojo'
-                    : value === 'NA'
-                      ? 'gris'
-                      : null,
-          }
-        : row,
-    ),
-  )
+    const requiereAccion = ['0', '1', '2'].includes(value)
 
-  const { error } = await supabase
-    .from('audit_responses')
-    .update({
-      calificacion: value,
-      requiere_accion: requiereAccion,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', responseId)
+    setItems((prev) =>
+      prev.map((row) =>
+        row.response_id === responseId
+          ? {
+              ...row,
+              calificacion: value,
+              requiere_accion: requiereAccion,
+              color_visual:
+                value === '3'
+                  ? 'verde'
+                  : value === '2' || value === '1'
+                    ? 'amarillo'
+                    : value === '0'
+                      ? 'rojo'
+                      : value === 'NA'
+                        ? 'gris'
+                        : null,
+            }
+          : row,
+      ),
+    )
 
-  if (error) {
-    console.error(error)
-    alert(`Error al guardar calificación: ${error.message}`)
-    await loadDetail()
+    const { error } = await supabase
+      .from('audit_responses')
+      .update({
+        calificacion: value,
+        requiere_accion: requiereAccion,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', responseId)
+
+    if (error) {
+      console.error(error)
+      alert(`Error al guardar calificación: ${error.message}`)
+      await loadDetail()
+    }
+
+    setSavingId(null)
+    await onRefreshDashboard()
   }
 
-  setSavingId(null)
-  await onRefreshDashboard()
-}
+  const clearRating = async (responseId) => {
+    if (!responseId) return
 
-const clearRating = async (responseId) => {
-  setSavingId(responseId)
+    setSavingId(responseId)
 
-  // Cambio visual inmediato sin recargar toda la auditoría
-  setItems((prev) =>
-    prev.map((row) =>
-      row.response_id === responseId
-        ? {
-            ...row,
-            calificacion: null,
-            requiere_accion: false,
-            color_visual: null,
-          }
-        : row,
-    ),
-  )
+    setItems((prev) =>
+      prev.map((row) =>
+        row.response_id === responseId
+          ? {
+              ...row,
+              calificacion: null,
+              requiere_accion: false,
+              color_visual: null,
+            }
+          : row,
+      ),
+    )
 
-  const { error } = await supabase
-    .from('audit_responses')
-    .update({
-      calificacion: null,
-      requiere_accion: false,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', responseId)
+    const { error } = await supabase
+      .from('audit_responses')
+      .update({
+        calificacion: null,
+        requiere_accion: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', responseId)
 
-  if (error) {
-    console.error(error)
-    alert(`Error al limpiar calificación: ${error.message}`)
-    await loadDetail()
+    if (error) {
+      console.error(error)
+      alert(`Error al limpiar calificación: ${error.message}`)
+      await loadDetail()
+    }
+
+    setSavingId(null)
+    await onRefreshDashboard()
   }
-
-  setSavingId(null)
-  await onRefreshDashboard()
-}
 
   const updateComments = async (responseId, comentarios) => {
-  if (!responseId) return
+    if (!responseId) return
 
-  const { error } = await supabase
-    .from('audit_responses')
-    .update({
-      comentarios,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', responseId)
+    const { error } = await supabase
+      .from('audit_responses')
+      .update({
+        comentarios,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', responseId)
 
-  if (error) {
-    console.error(error)
-    alert(`Error al guardar comentario: ${error.message}`)
+    if (error) {
+      console.error(error)
+      alert(`Error al guardar comentario: ${error.message}`)
+      return
+    }
+
+    setItems((prev) =>
+      prev.map((row) =>
+        row.response_id === responseId ? { ...row, comentarios } : row,
+      ),
+    )
+
+    setEditingComments((prev) => ({
+      ...prev,
+      [responseId]: false,
+    }))
   }
-}
 
   const toggleProceso = async (item, proceso) => {
+    if (!item.response_id) return
+
     const actuales = Array.isArray(item.procesos_evaluados)
       ? item.procesos_evaluados
       : []
@@ -1606,6 +1696,7 @@ const clearRating = async (responseId) => {
         <div className="flex flex-col 2xl:flex-row 2xl:items-center justify-between gap-4">
           <div>
             <button
+              type="button"
               onClick={onBack}
               className="text-cyan-700 font-black mb-3 hover:underline"
             >
@@ -1620,6 +1711,7 @@ const clearRating = async (responseId) => {
           </div>
 
           <button
+            type="button"
             onClick={loadDetail}
             className="rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 px-5 py-3 font-black flex items-center justify-center gap-2"
           >
@@ -1628,13 +1720,26 @@ const clearRating = async (responseId) => {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_260px] gap-4 mt-5">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px_260px] gap-4 mt-5">
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Buscar por punto o criterio..."
             className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100 focus:border-cyan-400"
           />
+
+          <select
+            value={selectedProcess}
+            onChange={(event) => setSelectedProcess(event.target.value)}
+            className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100 focus:border-cyan-400 font-bold"
+          >
+            <option value="todos">Todos los procesos</option>
+            {procesosBase.map((proceso) => (
+              <option key={proceso} value={proceso}>
+                {proceso}
+              </option>
+            ))}
+          </select>
 
           <select
             value={filter}
@@ -1654,54 +1759,72 @@ const clearRating = async (responseId) => {
 
       <div className="grid gap-4">
         {filteredItems.map((item) => {
-  if (item.tipo_item === 'seccion' || /^[0-9]+\.0$/.test(String(item.codigo_punto || '').trim())) {
-    return (
-      <motion.div
-        key={item.template_item_id}
-        initial={false}
-        animate={{ opacity: 1, y: 0 }}
-        className="rounded-[30px] bg-gradient-to-r from-slate-950 via-blue-950 to-cyan-900 text-white p-6 md:p-8 shadow-[0_16px_50px_rgba(15,23,42,0.18)] border border-white/20"
-      >
-        <div className="flex flex-col gap-3">
-          <span className="inline-flex w-fit rounded-full bg-white/10 border border-white/20 px-4 py-1.5 text-xs font-black uppercase tracking-widest">
-            Sección {item.codigo_punto}
-          </span>
+          if (
+            item.tipo_item === 'seccion' ||
+            /^[0-9]+\.0$/.test(String(item.codigo_punto || '').trim())
+          ) {
+            const sectionKey = getSectionKeyFromItem(item)
+            const isCollapsed = collapsedSections[sectionKey]
 
-          <h2 className="text-2xl md:text-3xl font-black tracking-tight">
-            {item.criterio}
-          </h2>
-        </div>
-      </motion.div>
-    )
-  }
+            return (
+              <motion.div
+                key={item.template_item_id}
+                initial={false}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-[30px] bg-gradient-to-r from-slate-950 via-blue-950 to-cyan-900 text-white p-6 md:p-8 shadow-[0_16px_50px_rgba(15,23,42,0.18)] border border-white/20"
+              >
+                <button
+                  type="button"
+                  onClick={() => toggleSection(sectionKey)}
+                  className="w-full flex flex-col md:flex-row md:items-center justify-between gap-4 text-left"
+                >
+                  <div className="flex flex-col gap-3">
+                    <span className="inline-flex w-fit rounded-full bg-white/10 border border-white/20 px-4 py-1.5 text-xs font-black uppercase tracking-widest">
+                      Sección {item.codigo_punto}
+                    </span>
+                    <h2 className="text-2xl md:text-3xl font-black tracking-tight">
+                      {item.criterio}
+                    </h2>
+                  </div>
 
-  if (item.tipo_item === 'subtitulo') {
-    return (
-      <motion.div
-        key={item.template_item_id}
-        initial={false}
-        animate={{ opacity: 1, y: 0 }}
-        className="rounded-[24px] bg-cyan-50 border border-cyan-100 text-cyan-900 px-6 py-4"
-      >
-        <div className="text-sm uppercase tracking-[0.18em] font-black text-cyan-600 mb-1">
-          Subtítulo
-        </div>
+                  <div className="shrink-0 w-12 h-12 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center">
+                    {isCollapsed ? (
+                      <ChevronRight className="w-6 h-6 text-cyan-200" />
+                    ) : (
+                      <ChevronDown className="w-6 h-6 text-cyan-200" />
+                    )}
+                  </div>
+                </button>
+              </motion.div>
+            )
+          }
 
-        <h3 className="text-xl font-black">
-          {item.criterio}
-        </h3>
-      </motion.div>
-    )
-  }
-  
-  const rating = getRatingConfig(item.calificacion)
-  const procesos = Array.isArray(item.procesos_evaluados)
-    ? item.procesos_evaluados
-    : []
+          if (item.tipo_item === 'subtitulo') {
+            return (
+              <motion.div
+                key={item.template_item_id}
+                initial={false}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-[24px] bg-cyan-50 border border-cyan-100 text-cyan-900 px-6 py-4"
+              >
+                <div className="text-xs uppercase tracking-[0.18em] font-black text-cyan-600 mb-1">
+                  Subtítulo
+                </div>
+                <h3 className="text-xl font-black">
+                  {item.criterio}
+                </h3>
+              </motion.div>
+            )
+          }
 
-  return (
-    <motion.div
-              key={item.response_id}
+          const rating = getRatingConfig(item.calificacion)
+          const procesos = Array.isArray(item.procesos_evaluados)
+            ? item.procesos_evaluados
+            : []
+
+          return (
+            <motion.div
+              key={item.response_id || item.template_item_id}
               initial={false}
               animate={{ opacity: 1, y: 0 }}
               className={`bg-white rounded-[30px] p-5 md:p-6 border shadow-[0_14px_40px_rgba(15,23,42,0.08)] ${
@@ -1755,17 +1878,18 @@ const clearRating = async (responseId) => {
                       Procesos evaluados
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
                       {procesosBase.map((proceso) => {
                         const active = procesos.includes(proceso)
 
                         return (
                           <button
                             key={proceso}
+                            type="button"
                             onClick={() => toggleProceso(item, proceso)}
-                            className={`rounded-full px-3 py-1.5 text-xs font-black border transition-all ${
+                            className={`min-h-[40px] rounded-2xl px-3 py-2 text-[11px] font-black border transition-all text-center leading-tight flex items-center justify-center ${
                               active
-                                ? 'bg-cyan-600 text-white border-cyan-600'
+                                ? 'bg-cyan-600 text-white border-cyan-600 shadow-sm'
                                 : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-cyan-50'
                             }`}
                           >
@@ -1776,12 +1900,64 @@ const clearRating = async (responseId) => {
                     </div>
                   </div>
 
-                  <textarea
-                    defaultValue={item.comentarios || ''}
-                    onBlur={(event) => updateComments(item.response_id, event.target.value)}
-                    placeholder="Comentarios u observaciones del auditor..."
-                    className="mt-5 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 min-h-[90px] outline-none focus:ring-4 focus:ring-cyan-100 focus:border-cyan-400"
-                  />
+                  <div className="mt-5">
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <div className="text-xs uppercase tracking-widest font-black text-slate-400">
+                        Observaciones / evidencia textual
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateComments(
+                              item.response_id,
+                              commentDrafts[item.response_id] ?? item.comentarios ?? '',
+                            )
+                          }
+                          className="w-9 h-9 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-100 flex items-center justify-center"
+                          title="Guardar comentario"
+                        >
+                          <Save className="w-4 h-4" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEditingComments((prev) => ({
+                              ...prev,
+                              [item.response_id]: true,
+                            }))
+                          }
+                          className="w-9 h-9 rounded-xl bg-slate-50 hover:bg-cyan-50 text-slate-600 border border-slate-200 flex items-center justify-center"
+                          title="Editar comentario"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <textarea
+                      value={commentDrafts[item.response_id] ?? item.comentarios ?? ''}
+                      onChange={(event) =>
+                        setCommentDrafts((prev) => ({
+                          ...prev,
+                          [item.response_id]: event.target.value,
+                        }))
+                      }
+                      disabled={
+                        Boolean(item.comentarios) &&
+                        editingComments[item.response_id] !== true
+                      }
+                      placeholder="Comentarios u observaciones del auditor..."
+                      className={`w-full rounded-2xl border px-4 py-3 min-h-[90px] outline-none focus:ring-4 focus:ring-cyan-100 focus:border-cyan-400 ${
+                        Boolean(item.comentarios) &&
+                        editingComments[item.response_id] !== true
+                          ? 'bg-slate-100 text-slate-500 border-slate-200'
+                          : 'bg-slate-50 border-slate-200'
+                      }`}
+                    />
+                  </div>
                 </div>
 
                 <div className="2xl:w-72">
@@ -1793,6 +1969,7 @@ const clearRating = async (responseId) => {
                     {ratingOptions.map((option) => (
                       <button
                         key={option.value}
+                        type="button"
                         disabled={savingId === item.response_id}
                         onClick={() => updateRating(item.response_id, option.value)}
                         className={`rounded-2xl px-4 py-3 font-black border transition-all flex items-center justify-center 2xl:justify-between gap-2 ${
@@ -1806,20 +1983,21 @@ const clearRating = async (responseId) => {
                           {option.description}
                         </span>
                       </button>
-                ))}
-              </div>
+                    ))}
+                  </div>
 
-              <button
-                disabled={savingId === item.response_id || !item.calificacion}
-                onClick={() => clearRating(item.response_id)}
-                className={`mt-3 w-full rounded-2xl px-4 py-3 font-black border transition-all ${
-                  item.calificacion
-                    ? 'bg-white hover:bg-red-50 text-red-600 border-red-200'
-                  : 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'
-                }`}
-              >
-                 Limpiar calificación
-              </button>
+                  <button
+                    type="button"
+                    disabled={savingId === item.response_id || !item.calificacion}
+                    onClick={() => clearRating(item.response_id)}
+                    className={`mt-3 w-full rounded-2xl px-4 py-3 font-black border transition-all ${
+                      item.calificacion
+                        ? 'bg-white hover:bg-red-50 text-red-600 border-red-200'
+                        : 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'
+                    }`}
+                  >
+                    Limpiar calificación
+                  </button>
 
                   {savingId === item.response_id && (
                     <div className="text-xs text-slate-500 font-bold mt-3">
