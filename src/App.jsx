@@ -33,6 +33,11 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  RadialBar,
+  RadialBarChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -104,6 +109,68 @@ const procesosBase = [
   'Comercialización',
   'Compras',
   'I+D',
+]
+
+const fccaSectionWeights = [
+  {
+    section: '1',
+    code: '1.0',
+    title: 'Factory Facilities & Environment',
+    spanishTitle: 'Instalaciones de fábrica y medio ambiente',
+    weight: 15,
+  },
+  {
+    section: '2',
+    code: '2.0',
+    title: 'Quality Management System',
+    spanishTitle: 'Sistema de manejo de calidad',
+    weight: 20,
+  },
+  {
+    section: '3',
+    code: '3.0',
+    title: 'Incoming Materials Control',
+    spanishTitle: 'Control de materiales entrados',
+    weight: 15,
+  },
+  {
+    section: '4',
+    code: '4.0',
+    title: 'Process and Production Control',
+    spanishTitle: 'Proceso y control de producción',
+    weight: 25,
+  },
+  {
+    section: '5',
+    code: '5.0',
+    title: 'In-House Testing',
+    spanishTitle: 'Pruebas internas',
+    weight: 10,
+  },
+  {
+    section: '6',
+    code: '6.0',
+    title: 'Final Inspection',
+    spanishTitle: 'Inspección final',
+    weight: 10,
+  },
+  {
+    section: '7',
+    code: '7.0',
+    title: 'People Resources and Training',
+    spanishTitle: 'Recursos humanos y capacitación',
+    weight: 5,
+  },
+]
+
+const chartPalette = [
+  '#0891b2',
+  '#2563eb',
+  '#7c3aed',
+  '#16a34a',
+  '#f59e0b',
+  '#dc2626',
+  '#64748b',
 ]
 
 const menuItems = [
@@ -1222,6 +1289,172 @@ function ComingSoon({ title }) {
 
 function Dashboard({ dashboard, onOpenAudit, loading }) {
   const first = dashboard?.[0]
+  const [detailRows, setDetailRows] = useState([])
+  const [detailLoading, setDetailLoading] = useState(false)
+
+  const loadDashboardDetail = async () => {
+    if (!first?.audit_id) return
+
+    setDetailLoading(true)
+
+    const { data, error } = await supabase
+      .from('v_fcca_audit_detail')
+      .select('*')
+      .eq('audit_id', first.audit_id)
+      .order('orden', { ascending: true })
+
+    if (error) {
+      console.error(error)
+      setDetailLoading(false)
+      return
+    }
+
+    setDetailRows(data || [])
+    setDetailLoading(false)
+  }
+
+  useEffect(() => {
+    loadDashboardDetail()
+  }, [first?.audit_id])
+
+  const evaluableRows = detailRows.filter(
+    (row) =>
+      row.tipo_item === 'pregunta' &&
+      row.response_id &&
+      row.calificacion !== null &&
+      row.calificacion !== undefined &&
+      row.calificacion !== 'NA',
+  )
+
+  const getNumericScore = (value) => {
+    if (value === '3') return 3
+    if (value === '2') return 2
+    if (value === '1') return 1
+    if (value === '0') return 0
+    return null
+  }
+
+  const sectionData = fccaSectionWeights.map((sectionItem, index) => {
+    const rows = detailRows.filter((row) => {
+      const code = String(row.codigo_punto || '')
+      return (
+        row.tipo_item === 'pregunta' &&
+        code.startsWith(`${sectionItem.section}.`) &&
+        !code.endsWith('.0')
+      )
+    })
+
+    const evaluatedRows = rows.filter(
+      (row) =>
+        row.calificacion !== null &&
+        row.calificacion !== undefined &&
+        row.calificacion !== 'NA',
+    )
+
+    const scoreSum = evaluatedRows.reduce((acc, row) => {
+      const score = getNumericScore(row.calificacion)
+      return acc + (score ?? 0)
+    }, 0)
+
+    const maxScore = evaluatedRows.length * 3
+    const compliance = maxScore > 0 ? Math.round((scoreSum / maxScore) * 100) : 0
+    const contribution = Math.round((compliance * sectionItem.weight) / 100)
+
+    return {
+      ...sectionItem,
+      name: sectionItem.title,
+      shortName: `Sec. ${sectionItem.section}`,
+      total: rows.length,
+      evaluated: evaluatedRows.length,
+      pending: rows.length - evaluatedRows.length,
+      compliance,
+      contribution,
+      fill: chartPalette[index % chartPalette.length],
+    }
+  })
+
+  const weightedScore = sectionData.reduce(
+    (acc, sectionItem) => acc + sectionItem.contribution,
+    0,
+  )
+
+  const processData = procesosBase
+    .map((processName) => {
+      const rows = detailRows.filter((row) => {
+        if (row.tipo_item !== 'pregunta') return false
+
+        const evaluated = Array.isArray(row.procesos_evaluados)
+          ? row.procesos_evaluados
+          : []
+
+        return evaluated.includes(processName)
+      })
+
+      const evaluatedRows = rows.filter(
+        (row) =>
+          row.calificacion !== null &&
+          row.calificacion !== undefined &&
+          row.calificacion !== 'NA',
+      )
+
+      const scoreSum = evaluatedRows.reduce((acc, row) => {
+        const score = getNumericScore(row.calificacion)
+        return acc + (score ?? 0)
+      }, 0)
+
+      const maxScore = evaluatedRows.length * 3
+      const compliance = maxScore > 0 ? Math.round((scoreSum / maxScore) * 100) : 0
+
+      return {
+        name: processName,
+        cumplimiento: compliance,
+        puntos: rows.length,
+        evaluados: evaluatedRows.length,
+      }
+    })
+    .filter((item) => item.puntos > 0)
+    .sort((a, b) => b.cumplimiento - a.cumplimiento)
+
+  const criticalRows = detailRows.filter(
+    (row) => row.tipo_item === 'pregunta' && row.es_critico,
+  )
+
+  const criticalEvaluated = criticalRows.filter(
+    (row) =>
+      row.calificacion !== null &&
+      row.calificacion !== undefined &&
+      row.calificacion !== 'NA',
+  )
+
+  const criticalCompliant = criticalEvaluated.filter((row) =>
+    ['1', '2', '3'].includes(row.calificacion),
+  )
+
+  const criticalNonCompliant = criticalEvaluated.filter(
+    (row) => row.calificacion === '0',
+  )
+
+  const criticalPending = criticalRows.length - criticalEvaluated.length
+
+  const criticalCompliance =
+    criticalEvaluated.length > 0
+      ? Math.round((criticalCompliant.length / criticalEvaluated.length) * 100)
+      : 0
+
+  const criticalChartData = [
+    {
+      name: 'Cumple',
+      value: criticalCompliant.length,
+    },
+    {
+      name: 'No cumple',
+      value: criticalNonCompliant.length,
+    },
+    {
+      name: 'Pendiente',
+      value: criticalPending,
+    },
+  ]
 
   const chartData = first
     ? [
@@ -1256,7 +1489,7 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-5 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-6 gap-5">
         <KpiCard
           title="Score global"
           value={`${first.score_global || 0}%`}
@@ -1264,6 +1497,15 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
           icon={<Gauge className="w-7 h-7" />}
           tone="green"
         />
+
+        <KpiCard
+          title="Score ponderado"
+          value={`${weightedScore}%`}
+          subtitle="Según ponderación FCCA"
+          icon={<BarChart3 className="w-7 h-7" />}
+          tone="cyan"
+        />
+
         <KpiCard
           title="Total puntos"
           value={first.total_respuestas || 0}
@@ -1271,6 +1513,7 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
           icon={<ClipboardCheck className="w-7 h-7" />}
           tone="cyan"
         />
+
         <KpiCard
           title="Pendientes"
           value={first.puntos_pendientes || 0}
@@ -1278,6 +1521,7 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
           icon={<Clock className="w-7 h-7" />}
           tone="amber"
         />
+
         <KpiCard
           title="No cumple"
           value={first.puntos_rojos || 0}
@@ -1285,12 +1529,13 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
           icon={<XCircle className="w-7 h-7" />}
           tone="red"
         />
+
         <KpiCard
-          title="N/A"
-          value={first.puntos_grises || 0}
-          subtitle="No aplica"
-          icon={<FileText className="w-7 h-7" />}
-          tone="slate"
+          title="Críticos"
+          value={`${criticalCompliance}%`}
+          subtitle={`${criticalNonCompliant.length} no cumplen`}
+          icon={<AlertTriangle className="w-7 h-7" />}
+          tone={criticalNonCompliant.length > 0 ? 'red' : 'green'}
         />
       </div>
 
@@ -1302,13 +1547,16 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
                 <ClipboardList className="w-4 h-4" />
                 Auditoría activa
               </div>
+
               <h2 className="text-2xl md:text-3xl font-black text-slate-950">
                 {first.auditoria}
               </h2>
+
               <p className="text-slate-500 font-semibold">
                 {first.empresa} · {first.planta}
               </p>
             </div>
+
             <button
               onClick={() => onOpenAudit(first.audit_id)}
               className="rounded-2xl bg-slate-950 hover:bg-cyan-700 text-white px-5 py-3 font-black flex items-center justify-center gap-2"
@@ -1327,6 +1575,7 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
                 {first.auditor || 'Sin asignar'}
               </div>
             </div>
+
             <div className="bg-slate-50 rounded-2xl p-4">
               <div className="text-slate-400 font-black uppercase tracking-widest">
                 Responsable
@@ -1335,6 +1584,7 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
                 {first.responsable || 'Sin asignar'}
               </div>
             </div>
+
             <div className="bg-slate-50 rounded-2xl p-4">
               <div className="text-slate-400 font-black uppercase tracking-widest">
                 Fecha inicio
@@ -1343,6 +1593,7 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
                 {first.fecha_inicio || 'N/A'}
               </div>
             </div>
+
             <div className="bg-slate-50 rounded-2xl p-4">
               <div className="text-slate-400 font-black uppercase tracking-widest">
                 Fecha compromiso
@@ -1356,8 +1607,9 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
 
         <div className="bg-white rounded-[32px] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white">
           <h2 className="text-2xl font-black text-slate-950 mb-1">
-            Distribución
+            Distribución general
           </h2>
+
           <p className="text-slate-500 font-semibold mb-5">
             Estado por calificación
           </p>
@@ -1375,6 +1627,191 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
           </div>
         </div>
       </div>
+
+      <div className="grid grid-cols-1 2xl:grid-cols-[1.1fr_0.9fr] gap-6">
+        <div className="bg-white rounded-[32px] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white">
+          <div className="flex items-start justify-between gap-4 mb-5">
+            <div>
+              <h2 className="text-2xl font-black text-slate-950">
+                Cumplimiento por sección FCCA
+              </h2>
+              <p className="text-slate-500 font-semibold">
+                Basado en ponderación oficial por sección.
+              </p>
+            </div>
+
+            {detailLoading && (
+              <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-black text-slate-400">
+                Actualizando...
+              </span>
+            )}
+          </div>
+
+          <div className="grid gap-3">
+            {sectionData.map((sectionItem) => (
+              <div
+                key={sectionItem.code}
+                className="rounded-3xl bg-slate-50 border border-slate-100 p-4"
+              >
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full bg-slate-950 text-white px-3 py-1 text-xs font-black">
+                        {sectionItem.code}
+                      </span>
+                      <span className="rounded-full bg-white border border-slate-200 px-3 py-1 text-xs font-black text-slate-600">
+                        Peso {sectionItem.weight}%
+                      </span>
+                    </div>
+
+                    <div className="font-black text-slate-950 mt-2">
+                      {sectionItem.title}
+                    </div>
+
+                    <div className="text-xs text-slate-500 font-bold">
+                      {sectionItem.evaluated}/{sectionItem.total} puntos evaluados
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <div className="text-3xl font-black text-slate-950">
+                      {sectionItem.compliance}%
+                    </div>
+                    <div className="text-xs text-cyan-700 font-black">
+                      Aporta {sectionItem.contribution}%
+                    </div>
+                  </div>
+                </div>
+
+                <div className="h-3 rounded-full bg-white overflow-hidden border border-slate-100">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-blue-600"
+                    style={{ width: `${sectionItem.compliance}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-[32px] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white">
+          <h2 className="text-2xl font-black text-slate-950 mb-1">
+            Críticos FCCA
+          </h2>
+
+          <p className="text-slate-500 font-semibold mb-5">
+            Control de puntos críticos por cumplimiento.
+          </p>
+
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={criticalChartData}
+                  dataKey="value"
+                  nameKey="name"
+                  innerRadius={70}
+                  outerRadius={105}
+                  paddingAngle={4}
+                >
+                  {criticalChartData.map((entry, index) => (
+                    <Cell
+                      key={entry.name}
+                      fill={
+                        index === 0
+                          ? '#16a34a'
+                          : index === 1
+                            ? '#dc2626'
+                            : '#f59e0b'
+                      }
+                    />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3 mt-3">
+            <div className="rounded-2xl bg-emerald-50 p-3 text-center">
+              <div className="text-2xl font-black text-emerald-700">
+                {criticalCompliant.length}
+              </div>
+              <div className="text-xs font-black text-emerald-700">
+                Cumplen
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-red-50 p-3 text-center">
+              <div className="text-2xl font-black text-red-700">
+                {criticalNonCompliant.length}
+              </div>
+              <div className="text-xs font-black text-red-700">
+                No cumplen
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-amber-50 p-3 text-center">
+              <div className="text-2xl font-black text-amber-700">
+                {criticalPending}
+              </div>
+              <div className="text-xs font-black text-amber-700">
+                Pendientes
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {processData.length > 0 && (
+        <div className="bg-white rounded-[32px] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white">
+          <h2 className="text-2xl font-black text-slate-950 mb-1">
+            Cumplimiento por proceso
+          </h2>
+
+          <p className="text-slate-500 font-semibold mb-5">
+            Calculado con base en los procesos seleccionados durante la auditoría.
+          </p>
+
+          <div className="h-[420px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={processData}
+                layout="vertical"
+                margin={{ top: 10, right: 30, left: 90, bottom: 10 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis type="number" domain={[0, 100]} />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  width={140}
+                  tick={{ fontSize: 11, fontWeight: 700 }}
+                />
+                <Tooltip />
+                <Bar
+                  dataKey="cumplimiento"
+                  radius={[0, 12, 12, 0]}
+                  name="Cumplimiento"
+                >
+                  {processData.map((entry, index) => (
+                    <Cell
+                      key={entry.name}
+                      fill={
+                        entry.cumplimiento >= 90
+                          ? '#16a34a'
+                          : entry.cumplimiento >= 70
+                            ? '#f59e0b'
+                            : '#dc2626'
+                      }
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
