@@ -309,7 +309,7 @@ function LoginScreen({ onLogin }) {
 
 function Sidebar({ activeView, setActiveView }) {
   return (
-    <aside className="hidden xl:flex w-[290px] shrink-0 min-h-[calc(100vh-32px)] bg-white/90 backdrop-blur-xl rounded-[34px] border border-white shadow-[0_24px_80px_rgba(15,23,42,0.12)] p-5 flex-col justify-between">
+    <aside className="hidden 2xl:flex w-[290px] shrink-0 min-h-[calc(100vh-32px)] bg-white/90 backdrop-blur-xl rounded-[34px] border border-white shadow-[0_24px_80px_rgba(15,23,42,0.12)] p-5 flex-col justify-between">
       <div>
         <div className="flex items-center gap-3 mb-8">
           <div className="w-14 h-14 rounded-3xl bg-gradient-to-br from-slate-950 to-cyan-800 text-white flex items-center justify-center shadow-xl">
@@ -2636,7 +2636,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,#dff7ff_0,transparent_35%),radial-gradient(circle_at_bottom_right,#f1e8ff_0,transparent_32%),linear-gradient(135deg,#f8fafc,#ffffff,#eef8ff)] p-4">
-      <div className="max-w-[1900px] mx-auto flex gap-5">
+      <div className="w-full max-w-none mx-auto flex gap-5">
         <Sidebar activeView={activeView} setActiveView={(view) => {
           setSelectedAuditId(null)
           setActiveView(view)
