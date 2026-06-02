@@ -34,10 +34,9 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Legend,
   Pie,
   PieChart,
-  RadialBar,
-  RadialBarChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -116,62 +115,55 @@ const fccaSectionWeights = [
     section: '1',
     code: '1.0',
     title: 'Factory Facilities & Environment',
-    spanishTitle: 'Instalaciones de fábrica y medio ambiente',
     weight: 15,
   },
   {
     section: '2',
     code: '2.0',
     title: 'Quality Management System',
-    spanishTitle: 'Sistema de manejo de calidad',
     weight: 20,
   },
   {
     section: '3',
     code: '3.0',
     title: 'Incoming Materials Control',
-    spanishTitle: 'Control de materiales entrados',
     weight: 15,
   },
   {
     section: '4',
     code: '4.0',
     title: 'Process and Production Control',
-    spanishTitle: 'Proceso y control de producción',
     weight: 25,
   },
   {
     section: '5',
     code: '5.0',
     title: 'In-House Testing',
-    spanishTitle: 'Pruebas internas',
     weight: 10,
   },
   {
     section: '6',
     code: '6.0',
     title: 'Final Inspection',
-    spanishTitle: 'Inspección final',
     weight: 10,
   },
   {
     section: '7',
     code: '7.0',
     title: 'People Resources and Training',
-    spanishTitle: 'Recursos humanos y capacitación',
     weight: 5,
   },
 ]
 
-const chartPalette = [
-  '#0891b2',
-  '#2563eb',
-  '#7c3aed',
-  '#16a34a',
-  '#f59e0b',
-  '#dc2626',
-  '#64748b',
-]
+const chartPalette = {
+  cyan: '#0891b2',
+  blue: '#2563eb',
+  violet: '#7c3aed',
+  green: '#16a34a',
+  amber: '#f59e0b',
+  red: '#dc2626',
+  slate: '#64748b',
+ }
 
 const menuItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, active: true },
@@ -1292,39 +1284,38 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
   const [detailRows, setDetailRows] = useState([])
   const [detailLoading, setDetailLoading] = useState(false)
 
-  const loadDashboardDetail = async () => {
+  useEffect(() => {
     if (!first?.audit_id) return
 
-    setDetailLoading(true)
+    let active = true
 
-    const { data, error } = await supabase
-      .from('v_fcca_audit_detail')
-      .select('*')
-      .eq('audit_id', first.audit_id)
-      .order('orden', { ascending: true })
+    const loadDashboardDetail = async () => {
+      setDetailLoading(true)
 
-    if (error) {
-      console.error(error)
-      setDetailLoading(false)
-      return
+      const { data, error } = await supabase
+        .from('v_fcca_audit_detail')
+        .select('*')
+        .eq('audit_id', first.audit_id)
+        .order('orden', { ascending: true })
+
+      if (error) {
+        console.error(error)
+        setDetailLoading(false)
+        return
+      }
+
+      if (active) {
+        setDetailRows(data || [])
+        setDetailLoading(false)
+      }
     }
 
-    setDetailRows(data || [])
-    setDetailLoading(false)
-  }
-
-  useEffect(() => {
     loadDashboardDetail()
-  }, [first?.audit_id])
 
-  const evaluableRows = detailRows.filter(
-    (row) =>
-      row.tipo_item === 'pregunta' &&
-      row.response_id &&
-      row.calificacion !== null &&
-      row.calificacion !== undefined &&
-      row.calificacion !== 'NA',
-  )
+    return () => {
+      active = false
+    }
+  }, [first?.audit_id])
 
   const getNumericScore = (value) => {
     if (value === '3') return 3
@@ -1334,8 +1325,28 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
     return null
   }
 
+  const isEvaluableQuestion = (row) => {
+    return (
+      row.tipo_item === 'pregunta' &&
+      row.response_id &&
+      row.calificacion !== null &&
+      row.calificacion !== undefined &&
+      row.calificacion !== 'NA'
+    )
+  }
+
+  const chartData = first
+    ? [
+        { name: 'Verde', value: Number(first.puntos_verdes || 0), fill: chartPalette.green },
+        { name: 'Amarillo', value: Number(first.puntos_amarillos || 0), fill: chartPalette.amber },
+        { name: 'Rojo', value: Number(first.puntos_rojos || 0), fill: chartPalette.red },
+        { name: 'Gris', value: Number(first.puntos_grises || 0), fill: chartPalette.slate },
+        { name: 'Pendiente', value: Number(first.puntos_pendientes || 0), fill: '#020617' },
+      ]
+    : []
+
   const sectionData = fccaSectionWeights.map((sectionItem, index) => {
-    const rows = detailRows.filter((row) => {
+    const sectionRows = detailRows.filter((row) => {
       const code = String(row.codigo_punto || '')
       return (
         row.tipo_item === 'pregunta' &&
@@ -1344,12 +1355,7 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
       )
     })
 
-    const evaluatedRows = rows.filter(
-      (row) =>
-        row.calificacion !== null &&
-        row.calificacion !== undefined &&
-        row.calificacion !== 'NA',
-    )
+    const evaluatedRows = sectionRows.filter(isEvaluableQuestion)
 
     const scoreSum = evaluatedRows.reduce((acc, row) => {
       const score = getNumericScore(row.calificacion)
@@ -1358,44 +1364,57 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
 
     const maxScore = evaluatedRows.length * 3
     const compliance = maxScore > 0 ? Math.round((scoreSum / maxScore) * 100) : 0
-    const contribution = Math.round((compliance * sectionItem.weight) / 100)
+    const contribution = Number(((compliance * sectionItem.weight) / 100).toFixed(1))
 
     return {
       ...sectionItem,
-      name: sectionItem.title,
-      shortName: `Sec. ${sectionItem.section}`,
-      total: rows.length,
+      total: sectionRows.length,
       evaluated: evaluatedRows.length,
-      pending: rows.length - evaluatedRows.length,
+      pending: sectionRows.length - evaluatedRows.length,
       compliance,
       contribution,
-      fill: chartPalette[index % chartPalette.length],
+      fill: [
+        chartPalette.cyan,
+        chartPalette.blue,
+        chartPalette.violet,
+        chartPalette.green,
+        chartPalette.amber,
+        chartPalette.red,
+        chartPalette.slate,
+      ][index],
     }
   })
 
-  const weightedScore = sectionData.reduce(
-    (acc, sectionItem) => acc + sectionItem.contribution,
-    0,
+  const weightedScore = Number(
+    sectionData.reduce((acc, sectionItem) => acc + sectionItem.contribution, 0).toFixed(1),
   )
+
+  const weightedDonutData = [
+    {
+      name: 'Cumplimiento ponderado',
+      value: weightedScore,
+      fill: chartPalette.cyan,
+    },
+    {
+      name: 'Pendiente ponderado',
+      value: Math.max(100 - weightedScore, 0),
+      fill: '#e2e8f0',
+    },
+  ]
 
   const processData = procesosBase
     .map((processName) => {
       const rows = detailRows.filter((row) => {
         if (row.tipo_item !== 'pregunta') return false
 
-        const evaluated = Array.isArray(row.procesos_evaluados)
+        const procesosEvaluados = Array.isArray(row.procesos_evaluados)
           ? row.procesos_evaluados
           : []
 
-        return evaluated.includes(processName)
+        return procesosEvaluados.includes(processName)
       })
 
-      const evaluatedRows = rows.filter(
-        (row) =>
-          row.calificacion !== null &&
-          row.calificacion !== undefined &&
-          row.calificacion !== 'NA',
-      )
+      const evaluatedRows = rows.filter(isEvaluableQuestion)
 
       const scoreSum = evaluatedRows.reduce((acc, row) => {
         const score = getNumericScore(row.calificacion)
@@ -1419,12 +1438,7 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
     (row) => row.tipo_item === 'pregunta' && row.es_critico,
   )
 
-  const criticalEvaluated = criticalRows.filter(
-    (row) =>
-      row.calificacion !== null &&
-      row.calificacion !== undefined &&
-      row.calificacion !== 'NA',
-  )
+  const criticalEvaluated = criticalRows.filter(isEvaluableQuestion)
 
   const criticalCompliant = criticalEvaluated.filter((row) =>
     ['1', '2', '3'].includes(row.calificacion),
@@ -1445,26 +1459,19 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
     {
       name: 'Cumple',
       value: criticalCompliant.length,
+      fill: chartPalette.green,
     },
     {
       name: 'No cumple',
       value: criticalNonCompliant.length,
+      fill: chartPalette.red,
     },
     {
       name: 'Pendiente',
       value: criticalPending,
+      fill: chartPalette.amber,
     },
   ]
-
-  const chartData = first
-    ? [
-        { name: 'Verde', value: Number(first.puntos_verdes || 0) },
-        { name: 'Amarillo', value: Number(first.puntos_amarillos || 0) },
-        { name: 'Rojo', value: Number(first.puntos_rojos || 0) },
-        { name: 'Gris', value: Number(first.puntos_grises || 0) },
-        { name: 'Pendiente', value: Number(first.puntos_pendientes || 0) },
-      ]
-    : []
 
   if (loading) {
     return (
@@ -1540,7 +1547,11 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
       </div>
 
       <div className="grid grid-cols-1 2xl:grid-cols-[1.2fr_0.8fr] gap-6">
-        <div className="bg-white rounded-[32px] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white">
+        <motion.div
+          initial={false}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-[32px] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white"
+        >
           <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-6">
             <div>
               <div className="inline-flex items-center gap-2 bg-cyan-50 text-cyan-700 rounded-full px-3 py-1 text-xs font-black mb-3">
@@ -1603,40 +1614,75 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
               </div>
             </div>
           </div>
-        </div>
+        </motion.div>
 
-        <div className="bg-white rounded-[32px] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white">
-          <h2 className="text-2xl font-black text-slate-950 mb-1">
-            Distribución general
-          </h2>
+        <motion.div
+          initial={false}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-cyan-900 rounded-[32px] p-6 shadow-[0_24px_70px_rgba(15,23,42,0.22)] border border-white/10 text-white"
+        >
+          <div className="absolute -top-24 -right-20 w-64 h-64 bg-cyan-400/20 blur-3xl rounded-full" />
+          <div className="absolute -bottom-24 -left-20 w-64 h-64 bg-violet-400/20 blur-3xl rounded-full" />
 
-          <p className="text-slate-500 font-semibold mb-5">
-            Estado por calificación
-          </p>
+          <div className="relative z-10">
+            <h2 className="text-2xl font-black mb-1">
+              Score ponderado FCCA
+            </h2>
 
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="value" radius={[10, 10, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <p className="text-cyan-100 font-semibold mb-4">
+              Basado en la ponderación oficial por sección.
+            </p>
+
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={weightedDonutData}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={74}
+                    outerRadius={102}
+                    paddingAngle={4}
+                    startAngle={90}
+                    endAngle={-270}
+                  >
+                    {weightedDonutData.map((entry) => (
+                      <Cell key={entry.name} fill={entry.fill} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="text-center mt-12">
+                <div className="text-5xl font-black">
+                  {weightedScore}%
+                </div>
+                <div className="text-xs uppercase tracking-widest text-cyan-100 font-black">
+                  Ponderado
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        </motion.div>
       </div>
 
       <div className="grid grid-cols-1 2xl:grid-cols-[1.1fr_0.9fr] gap-6">
-        <div className="bg-white rounded-[32px] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white">
+        <motion.div
+          initial={false}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-[32px] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white"
+        >
           <div className="flex items-start justify-between gap-4 mb-5">
             <div>
               <h2 className="text-2xl font-black text-slate-950">
                 Cumplimiento por sección FCCA
               </h2>
+
               <p className="text-slate-500 font-semibold">
-                Basado en ponderación oficial por sección.
+                Avance ponderado por sección oficial.
               </p>
             </div>
 
@@ -1655,10 +1701,11 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
               >
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="rounded-full bg-slate-950 text-white px-3 py-1 text-xs font-black">
                         {sectionItem.code}
                       </span>
+
                       <span className="rounded-full bg-white border border-slate-200 px-3 py-1 text-xs font-black text-slate-600">
                         Peso {sectionItem.weight}%
                       </span>
@@ -1677,6 +1724,7 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
                     <div className="text-3xl font-black text-slate-950">
                       {sectionItem.compliance}%
                     </div>
+
                     <div className="text-xs text-cyan-700 font-black">
                       Aporta {sectionItem.contribution}%
                     </div>
@@ -1685,22 +1733,26 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
 
                 <div className="h-3 rounded-full bg-white overflow-hidden border border-slate-100">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-blue-600"
+                    className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 shadow-[0_8px_20px_rgba(8,145,178,0.35)]"
                     style={{ width: `${sectionItem.compliance}%` }}
                   />
                 </div>
               </div>
             ))}
           </div>
-        </div>
+        </motion.div>
 
-        <div className="bg-white rounded-[32px] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white">
+        <motion.div
+          initial={false}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-[32px] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white"
+        >
           <h2 className="text-2xl font-black text-slate-950 mb-1">
             Críticos FCCA
           </h2>
 
           <p className="text-slate-500 font-semibold mb-5">
-            Control de puntos críticos por cumplimiento.
+            Seguimiento especial de puntos críticos.
           </p>
 
           <div className="h-72">
@@ -1710,24 +1762,16 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
                   data={criticalChartData}
                   dataKey="value"
                   nameKey="name"
-                  innerRadius={70}
-                  outerRadius={105}
+                  innerRadius={72}
+                  outerRadius={108}
                   paddingAngle={4}
                 >
-                  {criticalChartData.map((entry, index) => (
-                    <Cell
-                      key={entry.name}
-                      fill={
-                        index === 0
-                          ? '#16a34a'
-                          : index === 1
-                            ? '#dc2626'
-                            : '#f59e0b'
-                      }
-                    />
+                  {criticalChartData.map((entry) => (
+                    <Cell key={entry.name} fill={entry.fill} />
                   ))}
                 </Pie>
                 <Tooltip />
+                <Legend />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -1760,32 +1804,66 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
               </div>
             </div>
           </div>
-        </div>
+        </motion.div>
       </div>
 
+      <motion.div
+        initial={false}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-white rounded-[32px] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white"
+      >
+        <h2 className="text-2xl font-black text-slate-950 mb-1">
+          Distribución general
+        </h2>
+
+        <p className="text-slate-500 font-semibold mb-5">
+          Estado por calificación.
+        </p>
+
+        <div className="h-72">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" />
+              <YAxis allowDecimals={false} />
+              <Tooltip />
+              <Bar dataKey="value" radius={[12, 12, 0, 0]}>
+                {chartData.map((entry) => (
+                  <Cell key={entry.name} fill={entry.fill} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </motion.div>
+
       {processData.length > 0 && (
-        <div className="bg-white rounded-[32px] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white">
+        <motion.div
+          initial={false}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-[32px] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white"
+        >
           <h2 className="text-2xl font-black text-slate-950 mb-1">
             Cumplimiento por proceso
           </h2>
 
           <p className="text-slate-500 font-semibold mb-5">
-            Calculado con base en los procesos seleccionados durante la auditoría.
+            Calculado con base en los procesos seleccionados en la auditoría.
           </p>
 
-          <div className="h-[420px]">
+          <div className="h-[440px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={processData}
                 layout="vertical"
-                margin={{ top: 10, right: 30, left: 90, bottom: 10 }}
+                margin={{ top: 10, right: 30, left: 105, bottom: 10 }}
               >
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis type="number" domain={[0, 100]} />
                 <YAxis
                   type="category"
                   dataKey="name"
-                  width={140}
+                  width={150}
                   tick={{ fontSize: 11, fontWeight: 700 }}
                 />
                 <Tooltip />
@@ -1794,15 +1872,15 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
                   radius={[0, 12, 12, 0]}
                   name="Cumplimiento"
                 >
-                  {processData.map((entry, index) => (
+                  {processData.map((entry) => (
                     <Cell
                       key={entry.name}
                       fill={
                         entry.cumplimiento >= 90
-                          ? '#16a34a'
+                          ? chartPalette.green
                           : entry.cumplimiento >= 70
-                            ? '#f59e0b'
-                            : '#dc2626'
+                            ? chartPalette.amber
+                            : chartPalette.red
                       }
                     />
                   ))}
@@ -1810,7 +1888,7 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </div>
+        </motion.div>
       )}
     </div>
   )
