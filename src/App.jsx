@@ -1400,15 +1400,19 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
     }, 0)
 
     const maxScore = evaluatedRows.length * 3
-    const compliance = maxScore > 0 ? Math.round((scoreSum / maxScore) * 100) : 0
-    const contribution = Number(((compliance * sectionItem.weight) / 100).toFixed(1))
+    const scoreCompliance = maxScore > 0 ? Math.round((scoreSum / maxScore) * 100) : 0
+    const progress = sectionRows.length > 0
+      ? Math.round((evaluatedRows.length / sectionRows.length) * 100)
+      : 0
+    const contribution = Number(((scoreCompliance * sectionItem.weight) / 100).toFixed(1))
 
     return {
       ...sectionItem,
       total: sectionRows.length,
       evaluated: evaluatedRows.length,
       pending: sectionRows.length - evaluatedRows.length,
-      compliance,
+      compliance: progress,
+      scoreCompliance,
       contribution,
       fill: [
         chartPalette.cyan,
@@ -1722,7 +1726,7 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
               </h2>
 
               <p className="text-slate-500 font-semibold text-sm">
-                Avance ponderado por sección oficial.
+                Avance del total de puntos evaluados por sección.
               </p>
             </div>
 
@@ -1747,7 +1751,7 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
                       </span>
 
                       <span className="rounded-full bg-white border border-slate-200 px-2.5 py-1 text-[10px] font-black text-slate-600">
-                        Peso {sectionItem.weight}%
+                        Total {sectionItem.total}
                       </span>
                     </div>
 
@@ -1766,7 +1770,7 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
                     </div>
 
                     <div className="text-[11px] text-cyan-700 font-black">
-                      Aporta {sectionItem.contribution}%
+                      Pend. {sectionItem.pending}
                     </div>
                   </div>
                 </div>
