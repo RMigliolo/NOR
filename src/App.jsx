@@ -163,7 +163,7 @@ const chartPalette = {
   amber: '#f59e0b',
   red: '#dc2626',
   slate: '#64748b',
- }
+}
 
 const menuItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, active: true },
@@ -334,11 +334,10 @@ function Sidebar({ activeView, setActiveView }) {
               <button
                 key={item.id}
                 onClick={() => item.active ? setActiveView(item.id) : setActiveView(item.id)}
-                className={`w-full flex items-center justify-between gap-3 rounded-2xl px-4 py-3 text-left transition-all ${
-                  selected
+                className={`w-full flex items-center justify-between gap-3 rounded-2xl px-4 py-3 text-left transition-all ${selected
                     ? 'bg-slate-950 text-white shadow-xl'
                     : 'bg-slate-50 hover:bg-cyan-50 text-slate-700'
-                }`}
+                  }`}
               >
                 <span className="flex items-center gap-3 font-black">
                   <Icon className={`w-5 h-5 ${selected ? 'text-cyan-300' : 'text-slate-500'}`} />
@@ -346,9 +345,8 @@ function Sidebar({ activeView, setActiveView }) {
                 </span>
 
                 {!item.active && (
-                  <span className={`text-[10px] rounded-full px-2 py-1 font-black ${
-                    selected ? 'bg-white/15 text-white' : 'bg-white text-slate-400'
-                  }`}>
+                  <span className={`text-[10px] rounded-full px-2 py-1 font-black ${selected ? 'bg-white/15 text-white' : 'bg-white text-slate-400'
+                    }`}>
                     Próx.
                   </span>
                 )}
@@ -693,207 +691,210 @@ function ActionsView() {
     setLoading(false)
   }
 
-  useEffect(() => {
-  loadActions()
-  loadAttachments()
-
-  const channel = supabase
-    .channel('fcca-actions')
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'actions',
-      },
-      () => {
-        loadActions()
-      },
-    )
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'attachments',
-      },
-      () => {
-        loadAttachments()
-      },
-    )
-    .subscribe()
-
-  return () => {
-    supabase.removeChannel(channel)
-  }
-}, [])
-
   const loadAttachments = async () => {
-  const { data, error } = await supabase
-    .from('v_action_attachments')
-    .select('*')
+    const { data, error } = await supabase
+      .from('v_action_attachments')
+      .select('*')
 
-  if (error) {
-    console.error(error)
-    return
-  }
-
-  setAttachments(data || [])
-}
-
-const uploadEvidence = async (action) => {
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = '.jpg,.jpeg,.png,.pdf,.doc,.docx,.xls,.xlsx'
-
-  input.onchange = async (event) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-
-    setUploadingId(action.action_id)
-
-    const fileExt = file.name.split('.').pop()
-    const safeName = file.name
-      .replace(/\s+/g, '_')
-      .replace(/[^a-zA-Z0-9._-]/g, '')
-
-    const filePath = `acciones/${action.action_id}/${Date.now()}_${safeName}`
-
-    const { error: uploadError } = await supabase.storage
-      .from('evidencias')
-      .upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: false,
-      })
-
-    if (uploadError) {
-      console.error(uploadError)
-      alert(`Error al subir evidencia: ${uploadError.message}`)
-      setUploadingId(null)
+    if (error) {
+      console.error(error)
       return
     }
 
-    const { data: userData } = await supabase.auth.getUser()
-
-    const { error: insertError } = await supabase
-      .from('attachments')
-      .insert({
-        company_id: null,
-        audit_id: action.audit_id,
-        response_id: action.response_id,
-        finding_id: action.finding_id,
-        action_id: action.action_id,
-        nombre_archivo: file.name,
-        storage_path: filePath,
-        tipo_archivo: file.type || fileExt,
-        descripcion: 'Evidencia de acción correctiva',
-        modulo: 'acciones',
-        uploaded_by: userData?.user?.id || null,
-      })
-
-    if (insertError) {
-      console.error(insertError)
-      alert(`La evidencia se subió, pero no se registró en la tabla: ${insertError.message}`)
-      setUploadingId(null)
-      return
-    }
-
-    setUploadingId(null)
-    await loadAttachments()
-    alert('Evidencia cargada correctamente')
+    setAttachments(data || [])
   }
 
-  input.click()
-}
+  useEffect(() => {
+    loadActions()
+    loadAttachments()
+
+    const channel = supabase
+      .channel('fcca-actions')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'actions',
+        },
+        () => {
+          loadActions()
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'attachments',
+        },
+        () => {
+          loadAttachments()
+        },
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [])
+
+  const uploadEvidence = async (action) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.jpg,.jpeg,.png,.pdf,.doc,.docx,.xls,.xlsx'
+
+    input.onchange = async (event) => {
+      const file = event.target.files?.[0]
+      if (!file) return
+
+      setUploadingId(action.action_id)
+
+      const fileExt = file.name.split('.').pop()
+      const safeName = file.name
+        .replace(/\s+/g, '_')
+        .replace(/[^a-zA-Z0-9._-]/g, '')
+
+      const filePath = `acciones/${action.action_id}/${Date.now()}_${safeName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('evidencias')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false,
+        })
+
+      if (uploadError) {
+        console.error(uploadError)
+        alert(`Error al subir evidencia: ${uploadError.message}`)
+        setUploadingId(null)
+        return
+      }
+
+      const { data: userData } = await supabase.auth.getUser()
+
+      const { error: insertError } = await supabase
+        .from('attachments')
+        .insert({
+          company_id: null,
+          audit_id: action.audit_id,
+          response_id: action.response_id,
+          finding_id: action.finding_id,
+          action_id: action.action_id,
+          nombre_archivo: file.name,
+          storage_path: filePath,
+          tipo_archivo: file.type || fileExt,
+          descripcion: 'Evidencia de acción correctiva',
+          modulo: 'acciones',
+          uploaded_by: userData?.user?.id || null,
+        })
+
+      if (insertError) {
+        console.error(insertError)
+        alert(`La evidencia se subió, pero no se registró en la tabla: ${insertError.message}`)
+        setUploadingId(null)
+        return
+      }
+
+      setUploadingId(null)
+      await loadAttachments()
+      alert('Evidencia cargada correctamente')
+    }
+
+    input.click()
+  }
+
   const updateActionStatus = async (action, estado) => {
-  const actionAttachments = attachments.filter(
-    (att) => att.action_id === action.action_id,
-  )
+    const actionAttachments = attachments.filter(
+      (att) => att.action_id === action.action_id,
+    )
 
-  if (estado === 'cerrada' && actionAttachments.length === 0) {
-    alert('No puedes cerrar la acción sin cargar al menos una evidencia.')
-    return
+    const comentarioActual = commentDrafts[action.action_id] ?? action.comentarios
+
+    if (estado === 'cerrada' && actionAttachments.length === 0) {
+      alert('No puedes cerrar la acción sin cargar al menos una evidencia.')
+      return
+    }
+
+    if (estado === 'cerrada' && !comentarioActual) {
+      alert('No puedes cerrar la acción sin agregar un comentario de cierre o seguimiento.')
+      return
+    }
+
+    const payload = {
+      estado,
+      updated_at: new Date().toISOString(),
+    }
+
+    if (estado === 'cerrada') {
+      payload.fecha_cierre = new Date().toISOString().slice(0, 10)
+    }
+
+    if (estado !== 'cerrada') {
+      payload.fecha_cierre = null
+    }
+
+    const { error } = await supabase
+      .from('actions')
+      .update(payload)
+      .eq('id', action.action_id)
+
+    if (error) {
+      console.error(error)
+      alert(`Error al actualizar acción: ${error.message}`)
+      return
+    }
+
+    await loadActions()
   }
-
-  if (estado === 'cerrada' && !action.comentarios) {
-    alert('No puedes cerrar la acción sin agregar un comentario de cierre o seguimiento.')
-    return
-  }
-
-  const payload = {
-    estado,
-    updated_at: new Date().toISOString(),
-  }
-
-  if (estado === 'cerrada') {
-    payload.fecha_cierre = new Date().toISOString().slice(0, 10)
-  }
-
-  if (estado !== 'cerrada') {
-    payload.fecha_cierre = null
-  }
-
-  const { error } = await supabase
-    .from('actions')
-    .update(payload)
-    .eq('id', action.action_id)
-
-  if (error) {
-    console.error(error)
-    alert(`Error al actualizar acción: ${error.message}`)
-    return
-  }
-
-  await loadActions()
-}
 
   const filteredActions = actions.filter((action) => {
-  if (filter === 'todas') return true
+    if (filter === 'todas') return true
 
-  if (filter === 'activas') {
-    return ['pendiente', 'en_proceso'].includes(action.estado)
-  }
+    if (filter === 'activas') {
+      return ['pendiente', 'en_proceso'].includes(action.estado)
+    }
 
-  if (filter === 'pendientes') {
-    return action.estado === 'pendiente'
-  }
+    if (filter === 'pendientes') {
+      return action.estado === 'pendiente'
+    }
 
-  if (filter === 'en_proceso') {
-    return action.estado === 'en_proceso'
-  }
+    if (filter === 'en_proceso') {
+      return action.estado === 'en_proceso'
+    }
 
-  if (filter === 'pendiente_validacion') {
-    return (
-      action.estado === 'cerrada' &&
-      action.estado_validacion === 'pendiente_validacion'
-    )
-  }
+    if (filter === 'pendiente_validacion') {
+      return (
+        action.estado === 'cerrada' &&
+        action.estado_validacion === 'pendiente_validacion'
+      )
+    }
 
-  if (filter === 'validadas') {
-    return (
-      action.estado === 'cerrada' &&
-      action.estado_validacion === 'validada'
-    )
-  }
+    if (filter === 'validadas') {
+      return (
+        action.estado === 'cerrada' &&
+        action.estado_validacion === 'validada'
+      )
+    }
 
-  if (filter === 'rechazadas') {
-    return action.estado_validacion === 'rechazada'
-  }
+    if (filter === 'rechazadas') {
+      return action.estado_validacion === 'rechazada'
+    }
 
-  if (filter === 'cerradas') {
-    return action.estado === 'cerrada'
-  }
+    if (filter === 'cerradas') {
+      return action.estado === 'cerrada'
+    }
 
-  if (filter === 'vencidas') {
-    return action.semaforo === 'vencida'
-  }
+    if (filter === 'vencidas') {
+      return action.semaforo === 'vencida'
+    }
 
-  if (filter === 'por_vencer') {
-    return action.semaforo === 'por_vencer'
-  }
+    if (filter === 'por_vencer') {
+      return action.semaforo === 'por_vencer'
+    }
 
-  return true
-})
+    return true
+  })
 
   const stats = {
     total: actions.length,
@@ -905,13 +906,13 @@ const uploadEvidence = async (action) => {
   }
 
   const getSemaforoStyle = (semaforo) => {
-  if (semaforo === 'vencida') return 'bg-red-100 text-red-700 border-red-200'
-  if (semaforo === 'por_vencer') return 'bg-amber-100 text-amber-700 border-amber-200'
-  if (semaforo === 'pendiente_validacion') return 'bg-violet-100 text-violet-700 border-violet-200'
-  if (semaforo === 'cerrada_validada') return 'bg-emerald-100 text-emerald-700 border-emerald-200'
-  if (semaforo === 'cerrada') return 'bg-emerald-100 text-emerald-700 border-emerald-200'
-  return 'bg-cyan-100 text-cyan-700 border-cyan-200'
-}
+    if (semaforo === 'vencida') return 'bg-red-100 text-red-700 border-red-200'
+    if (semaforo === 'por_vencer') return 'bg-amber-100 text-amber-700 border-amber-200'
+    if (semaforo === 'pendiente_validacion') return 'bg-violet-100 text-violet-700 border-violet-200'
+    if (semaforo === 'cerrada_validada') return 'bg-emerald-100 text-emerald-700 border-emerald-200'
+    if (semaforo === 'cerrada') return 'bg-emerald-100 text-emerald-700 border-emerald-200'
+    return 'bg-cyan-100 text-cyan-700 border-cyan-200'
+  }
 
   const getPriorityStyle = (prioridad) => {
     if (prioridad === 'alta') return 'bg-red-100 text-red-700 border-red-200'
@@ -920,51 +921,51 @@ const uploadEvidence = async (action) => {
   }
 
   const updateActionComment = async (actionId) => {
-  const comentario = commentDrafts[actionId]
+    const comentario = commentDrafts[actionId]
 
-  const { error } = await supabase
-    .from('actions')
-    .update({
-      comentarios: comentario || null,
-      updated_at: new Date().toISOString(),
+    const { error } = await supabase
+      .from('actions')
+      .update({
+        comentarios: comentario || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', actionId)
+
+    if (error) {
+      console.error(error)
+      alert(`Error al guardar comentario: ${error.message}`)
+      return
+    }
+
+    await loadActions()
+  }
+
+  const validateActionClosure = async (action, status) => {
+    const comentario = window.prompt(
+      status === 'validada'
+        ? 'Comentario de validación SGI:'
+        : 'Motivo del rechazo SGI:',
+      status === 'validada'
+        ? 'Evidencia revisada y cierre aceptado.'
+        : 'Se requiere complementar evidencia o corregir la acción.',
+    )
+
+    if (comentario === null) return
+
+    const { error } = await supabase.rpc('validate_action_closure', {
+      target_action_id: action.action_id,
+      validation_status: status,
+      validation_comment: comentario,
     })
-    .eq('id', actionId)
 
-  if (error) {
-    console.error(error)
-    alert(`Error al guardar comentario: ${error.message}`)
-    return
+    if (error) {
+      console.error(error)
+      alert(`Error al validar acción: ${error.message}`)
+      return
+    }
+
+    await loadActions()
   }
-
-  await loadActions()
-}
-
-const validateActionClosure = async (action, status) => {
-  const comentario = window.prompt(
-    status === 'validada'
-      ? 'Comentario de validación SGI:'
-      : 'Motivo del rechazo SGI:',
-    status === 'validada'
-      ? 'Evidencia revisada y cierre aceptado.'
-      : 'Se requiere complementar evidencia o corregir la acción.',
-  )
-
-  if (comentario === null) return
-
-  const { error } = await supabase.rpc('validate_action_closure', {
-    target_action_id: action.action_id,
-    validation_status: status,
-    validation_comment: comentario,
-  })
-
-  if (error) {
-    console.error(error)
-    alert(`Error al validar acción: ${error.message}`)
-    return
-  }
-
-  await loadActions()
-}
 
   if (loading) {
     return (
@@ -1030,38 +1031,42 @@ const validateActionClosure = async (action, status) => {
           </div>
         ) : (
           <div className="grid gap-4">
-            {filteredActions.map((action) => (
-              <motion.div
-                key={action.action_id}
-                initial={false}
-                animate={{ opacity: 1, y: 0 }}
-                className="rounded-[28px] border border-slate-100 bg-slate-50 p-5"
-              >
-                <div className="flex flex-col 2xl:flex-row 2xl:items-start justify-between gap-5">
-                  <div className="min-w-0 flex-1">
+            {filteredActions.map((action) => {
+              const actionFiles = attachments.filter(
+                (att) => att.action_id === action.action_id,
+              )
+
+              return (
+                <motion.div
+                  key={action.action_id}
+                  initial={false}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="rounded-[30px] border border-slate-100 bg-white p-5 md:p-6 shadow-[0_14px_40px_rgba(15,23,42,0.08)]"
+                >
+                  <div className="mb-5">
                     <div className="flex flex-wrap items-center gap-2 mb-3">
                       <span className="rounded-full bg-slate-950 text-white px-3 py-1 text-xs font-black">
                         Punto {action.codigo_punto || 'S/C'}
                       </span>
 
                       <span className={`rounded-full border px-3 py-1 text-xs font-black ${getPriorityStyle(action.prioridad)}`}>
-                        Prioridad {action.prioridad}
+                        Prioridad {action.prioridad || 'media'}
                       </span>
 
                       <span className={`rounded-full border px-3 py-1 text-xs font-black ${getSemaforoStyle(action.semaforo)}`}>
-                        {action.semaforo}
+                        {action.semaforo || 'sin semáforo'}
                       </span>
 
                       <span className="rounded-full bg-white border border-slate-200 px-3 py-1 text-xs font-black text-slate-600">
-                        Estado: {action.estado}
+                        Estado: {action.estado || 'pendiente'}
                       </span>
                     </div>
 
-                    <h3 className="text-xl font-black text-slate-950 leading-snug">
+                    <h3 className="text-xl md:text-2xl font-black text-slate-950 leading-snug">
                       {action.titulo}
                     </h3>
 
-                    <p className="text-slate-600 font-semibold mt-3">
+                    <p className="text-slate-600 font-semibold mt-3 leading-relaxed">
                       {action.descripcion}
                     </p>
 
@@ -1070,178 +1075,210 @@ const validateActionClosure = async (action, status) => {
                     </p>
                   </div>
 
-                  <div className="mt-5 bg-white rounded-3xl p-4 border border-slate-100">
-  <div className="text-xs uppercase tracking-widest text-slate-400 font-black mb-2">
-    Seguimiento / comentario
-  </div>
+                  <div className="grid grid-cols-1 xl:grid-cols-[1fr_1fr_300px] gap-4 items-start">
+                    <div className="bg-slate-50 rounded-3xl p-4 border border-slate-100">
+                      <div className="flex items-center justify-between gap-3 mb-2">
+                        <div>
+                          <div className="text-xs uppercase tracking-widest text-slate-400 font-black">
+                            Seguimiento / comentario
+                          </div>
+                          <div className="text-sm text-slate-500 font-semibold">
+                            Describe avance, corrección o cierre.
+                          </div>
+                        </div>
 
-  <textarea
-    value={commentDrafts[action.action_id] ?? action.comentarios ?? ''}
-    onChange={(event) =>
-      setCommentDrafts((prev) => ({
-        ...prev,
-        [action.action_id]: event.target.value,
-      }))
-    }
-    placeholder="Describe el avance, corrección realizada o comentario de cierre..."
-    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 min-h-[90px] outline-none focus:ring-4 focus:ring-cyan-100 focus:border-cyan-400"
-  />
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => updateActionComment(action.action_id)}
+                            className="w-9 h-9 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-100 flex items-center justify-center"
+                            title="Guardar comentario"
+                          >
+                            <Save className="w-4 h-4" />
+                          </button>
 
-  <button
-    onClick={() => updateActionComment(action.action_id)}
-    className="mt-3 rounded-2xl bg-slate-950 hover:bg-cyan-700 text-white px-5 py-3 font-black"
-  >
-    Guardar comentario
-  </button>
-</div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCommentDrafts((prev) => ({
+                                ...prev,
+                                [action.action_id]: action.comentarios || '',
+                              }))
+                            }
+                            className="w-9 h-9 rounded-xl bg-white hover:bg-cyan-50 text-slate-600 border border-slate-200 flex items-center justify-center"
+                            title="Editar comentario"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
 
-<div className="mt-4 bg-white rounded-3xl p-4 border border-slate-100">
-  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3">
-    <div>
-      <div className="text-xs uppercase tracking-widest text-slate-400 font-black">
-        Evidencias
-      </div>
-      <div className="text-sm text-slate-500 font-semibold">
-        Adjunta soporte antes de cerrar la acción.
-      </div>
-    </div>
-
-    <button
-      onClick={() => uploadEvidence(action)}
-      disabled={uploadingId === action.action_id}
-      className="rounded-2xl bg-cyan-600 hover:bg-cyan-700 text-white px-5 py-3 font-black disabled:opacity-60"
-    >
-      {uploadingId === action.action_id ? 'Subiendo...' : 'Subir evidencia'}
-    </button>
-  </div>
-
-  {attachments.filter((att) => att.action_id === action.action_id).length === 0 ? (
-    <div className="bg-slate-50 rounded-2xl p-4 text-slate-400 font-bold text-sm">
-      Sin evidencias cargadas.
-    </div>
-  ) : (
-    <div className="grid gap-2">
-      {attachments
-        .filter((att) => att.action_id === action.action_id)
-        .map((att) => (
-          <div
-            key={att.attachment_id}
-            className="flex flex-col md:flex-row md:items-center justify-between gap-2 rounded-2xl bg-slate-50 border border-slate-100 px-4 py-3"
-          >
-            <div>
-              <div className="font-black text-slate-900">
-                {att.nombre_archivo}
-              </div>
-              <div className="text-xs text-slate-500 font-semibold">
-                Cargado por {att.usuario || 'usuario'} ·{' '}
-                {att.created_at
-                  ? new Date(att.created_at).toLocaleDateString('es-MX')
-                  : 'N/A'}
-              </div>
-            </div>
-
-            <button
-              onClick={async () => {
-                const { data, error } = await supabase.storage
-                  .from('evidencias')
-                  .createSignedUrl(att.storage_path, 60)
-
-                if (error) {
-                  alert(`No se pudo abrir evidencia: ${error.message}`)
-                  return
-                }
-
-                window.open(data.signedUrl, '_blank')
-              }}
-              className="rounded-xl bg-white border border-slate-200 px-4 py-2 text-sm font-black text-slate-700 hover:bg-cyan-50"
-            >
-              Ver archivo
-            </button>
-          </div>
-        ))}
-    </div>
-  )}
-</div>
-
-                  <div className="2xl:w-72 bg-white rounded-3xl p-4 border border-slate-100">
-                    <div className="text-xs uppercase tracking-widest text-slate-400 font-black">
-                      Fecha compromiso
-                    </div>
-                    <div className="font-black text-slate-950 mt-1">
-                      {action.fecha_compromiso || 'N/A'}
+                      <textarea
+                        value={commentDrafts[action.action_id] ?? action.comentarios ?? ''}
+                        onChange={(event) =>
+                          setCommentDrafts((prev) => ({
+                            ...prev,
+                            [action.action_id]: event.target.value,
+                          }))
+                        }
+                        placeholder="Describe el avance, corrección realizada o comentario de cierre..."
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 min-h-[120px] outline-none focus:ring-4 focus:ring-cyan-100 focus:border-cyan-400"
+                      />
                     </div>
 
-                    <div className="text-xs uppercase tracking-widest text-slate-400 font-black mt-4">
-                      Cambiar estado
+                    <div className="bg-slate-50 rounded-3xl p-4 border border-slate-100">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3">
+                        <div>
+                          <div className="text-xs uppercase tracking-widest text-slate-400 font-black">
+                            Evidencias
+                          </div>
+                          <div className="text-sm text-slate-500 font-semibold">
+                            Adjunta soporte antes de cerrar.
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => uploadEvidence(action)}
+                          disabled={uploadingId === action.action_id}
+                          className="rounded-2xl bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-3 font-black disabled:opacity-60 flex items-center justify-center gap-2"
+                        >
+                          <Pencil className="w-4 h-4" />
+                          {uploadingId === action.action_id ? 'Subiendo...' : 'Subir'}
+                        </button>
+                      </div>
+
+                      {actionFiles.length === 0 ? (
+                        <div className="bg-white rounded-2xl p-4 text-slate-400 font-bold text-sm border border-slate-100">
+                          Sin evidencias cargadas.
+                        </div>
+                      ) : (
+                        <div className="grid gap-2">
+                          {actionFiles.map((att) => (
+                            <div
+                              key={att.attachment_id}
+                              className="flex flex-col md:flex-row md:items-center justify-between gap-2 rounded-2xl bg-white border border-slate-100 px-4 py-3"
+                            >
+                              <div className="min-w-0">
+                                <div className="font-black text-slate-900 truncate">
+                                  {att.nombre_archivo}
+                                </div>
+                                <div className="text-xs text-slate-500 font-semibold">
+                                  Cargado por {att.usuario || 'usuario'} ·{' '}
+                                  {att.created_at
+                                    ? new Date(att.created_at).toLocaleDateString('es-MX')
+                                    : 'N/A'}
+                                </div>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const { data, error } = await supabase.storage
+                                    .from('evidencias')
+                                    .createSignedUrl(att.storage_path, 60)
+
+                                  if (error) {
+                                    alert(`No se pudo abrir evidencia: ${error.message}`)
+                                    return
+                                  }
+
+                                  window.open(data.signedUrl, '_blank')
+                                }}
+                                className="rounded-xl bg-slate-50 border border-slate-200 px-4 py-2 text-sm font-black text-slate-700 hover:bg-cyan-50"
+                              >
+                                Ver archivo
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
-                    <select
-                      value={action.estado || 'pendiente'}
-                      onChange={(event) => updateActionStatus(action, event.target.value)}
-                      className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 outline-none focus:ring-4 focus:ring-cyan-100 focus:border-cyan-400 font-bold"
-                    >
-                      <option value="pendiente">Pendiente</option>
-                      <option value="en_proceso">En proceso</option>
-                      <option value="cerrada">Cerrada</option>
-                    </select>
-                    {action.estado === 'cerrada' && action.estado_validacion !== 'validada' && (
-  <div className="mt-4 grid grid-cols-1 gap-2">
-    <button
-      onClick={() => validateActionClosure(action, 'validada')}
-      className="rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 font-black"
-    >
-      Validar cierre SGI
-    </button>
+                    <div className="bg-white rounded-3xl p-4 border border-slate-100 shadow-sm">
+                      <div className="text-xs uppercase tracking-widest text-slate-400 font-black">
+                        Fecha compromiso
+                      </div>
 
-    <button
-      onClick={() => validateActionClosure(action, 'rechazada')}
-      className="rounded-2xl bg-red-600 hover:bg-red-700 text-white px-4 py-3 font-black"
-    >
-      Rechazar cierre
-    </button>
-  </div>
-)}
+                      <div className="font-black text-slate-950 mt-1">
+                        {action.fecha_compromiso || 'N/A'}
+                      </div>
 
-{action.estado_validacion && (
-  <div className="mt-4 rounded-2xl bg-slate-50 border border-slate-100 p-3">
-    <div className="text-xs uppercase tracking-widest text-slate-400 font-black">
-      Validación SGI
-    </div>
+                      <div className="text-xs uppercase tracking-widest text-slate-400 font-black mt-4">
+                        Cambiar estado
+                      </div>
 
-    <div className={`inline-flex mt-2 rounded-full px-3 py-1 text-xs font-black border ${
-      action.estado_validacion === 'validada'
-        ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-        : action.estado_validacion === 'rechazada'
-          ? 'bg-red-100 text-red-700 border-red-200'
-          : 'bg-amber-100 text-amber-700 border-amber-200'
-    }`}>
-      {action.estado_validacion}
-    </div>
+                      <select
+                        value={action.estado || 'pendiente'}
+                        onChange={(event) => updateActionStatus(action, event.target.value)}
+                        className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 outline-none focus:ring-4 focus:ring-cyan-100 focus:border-cyan-400 font-bold"
+                      >
+                        <option value="pendiente">Pendiente</option>
+                        <option value="en_proceso">En proceso</option>
+                        <option value="cerrada">Cerrada</option>
+                      </select>
 
-    {action.comentario_validacion && (
-      <p className="text-sm text-slate-500 font-semibold mt-3">
-        {action.comentario_validacion}
-      </p>
-    )}
+                      {action.estado === 'cerrada' && action.estado_validacion !== 'validada' && (
+                        <div className="mt-4 grid grid-cols-1 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => validateActionClosure(action, 'validada')}
+                            className="rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 font-black"
+                          >
+                            Validar cierre SGI
+                          </button>
 
-    {action.validado_por_nombre && (
-      <p className="text-xs text-slate-400 font-bold mt-2">
-        Validado por: {action.validado_por_nombre}
-      </p>
-    )}
+                          <button
+                            type="button"
+                            onClick={() => validateActionClosure(action, 'rechazada')}
+                            className="rounded-2xl bg-red-600 hover:bg-red-700 text-white px-4 py-3 font-black"
+                          >
+                            Rechazar cierre
+                          </button>
+                        </div>
+                      )}
 
-    {action.fecha_validacion && (
-      <p className="text-xs text-slate-400 font-bold mt-1">
-        Fecha validación:{' '}
-        {new Date(action.fecha_validacion).toLocaleDateString('es-MX')}
-      </p>
-    )}
-  </div>
-)}
+                      {action.estado_validacion && (
+                        <div className="mt-4 rounded-2xl bg-slate-50 border border-slate-100 p-3">
+                          <div className="text-xs uppercase tracking-widest text-slate-400 font-black">
+                            Validación SGI
+                          </div>
+
+                          <div className={`inline-flex mt-2 rounded-full px-3 py-1 text-xs font-black border ${
+                            action.estado_validacion === 'validada'
+                              ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                              : action.estado_validacion === 'rechazada'
+                                ? 'bg-red-100 text-red-700 border-red-200'
+                                : 'bg-amber-100 text-amber-700 border-amber-200'
+                          }`}>
+                            {action.estado_validacion}
+                          </div>
+
+                          {action.comentario_validacion && (
+                            <p className="text-sm text-slate-500 font-semibold mt-3">
+                              {action.comentario_validacion}
+                            </p>
+                          )}
+
+                          {action.validado_por_nombre && (
+                            <p className="text-xs text-slate-400 font-bold mt-2">
+                              Validado por: {action.validado_por_nombre}
+                            </p>
+                          )}
+
+                          {action.fecha_validacion && (
+                            <p className="text-xs text-slate-400 font-bold mt-1">
+                              Fecha validación:{' '}
+                              {new Date(action.fecha_validacion).toLocaleDateString('es-MX')}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </motion.div>
-            ))}
+                </motion.div>
+              )
+            })}
           </div>
         )}
       </div>
@@ -1337,12 +1374,12 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
 
   const chartData = first
     ? [
-        { name: 'Verde', value: Number(first.puntos_verdes || 0), fill: chartPalette.green },
-        { name: 'Amarillo', value: Number(first.puntos_amarillos || 0), fill: chartPalette.amber },
-        { name: 'Rojo', value: Number(first.puntos_rojos || 0), fill: chartPalette.red },
-        { name: 'Gris', value: Number(first.puntos_grises || 0), fill: chartPalette.slate },
-        { name: 'Pendiente', value: Number(first.puntos_pendientes || 0), fill: '#020617' },
-      ]
+      { name: 'Verde', value: Number(first.puntos_verdes || 0), fill: chartPalette.green },
+      { name: 'Amarillo', value: Number(first.puntos_amarillos || 0), fill: chartPalette.amber },
+      { name: 'Rojo', value: Number(first.puntos_rojos || 0), fill: chartPalette.red },
+      { name: 'Gris', value: Number(first.puntos_grises || 0), fill: chartPalette.slate },
+      { name: 'Pendiente', value: Number(first.puntos_pendientes || 0), fill: '#020617' },
+    ]
     : []
 
   const sectionData = fccaSectionWeights.map((sectionItem, index) => {
@@ -2039,11 +2076,11 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
         filter === 'todos'
           ? true
           : (filter === 'pendientes' && !item.calificacion) ||
-            (filter === 'criticos' && item.es_critico) ||
-            (filter === 'rojos' && item.calificacion === '0') ||
-            (filter === 'amarillos' && ['1', '2'].includes(item.calificacion)) ||
-            (filter === 'verdes' && item.calificacion === '3') ||
-            (filter === 'na' && item.calificacion === 'NA')
+          (filter === 'criticos' && item.es_critico) ||
+          (filter === 'rojos' && item.calificacion === '0') ||
+          (filter === 'amarillos' && ['1', '2'].includes(item.calificacion)) ||
+          (filter === 'verdes' && item.calificacion === '3') ||
+          (filter === 'na' && item.calificacion === 'NA')
 
       return matchesFilter
     })
@@ -2060,20 +2097,20 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
       prev.map((row) =>
         row.response_id === responseId
           ? {
-              ...row,
-              calificacion: value,
-              requiere_accion: requiereAccion,
-              color_visual:
-                value === '3'
-                  ? 'verde'
-                  : value === '2' || value === '1'
-                    ? 'amarillo'
-                    : value === '0'
-                      ? 'rojo'
-                      : value === 'NA'
-                        ? 'gris'
-                        : null,
-            }
+            ...row,
+            calificacion: value,
+            requiere_accion: requiereAccion,
+            color_visual:
+              value === '3'
+                ? 'verde'
+                : value === '2' || value === '1'
+                  ? 'amarillo'
+                  : value === '0'
+                    ? 'rojo'
+                    : value === 'NA'
+                      ? 'gris'
+                      : null,
+          }
           : row,
       ),
     )
@@ -2106,11 +2143,11 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
       prev.map((row) =>
         row.response_id === responseId
           ? {
-              ...row,
-              calificacion: null,
-              requiere_accion: false,
-              color_visual: null,
-            }
+            ...row,
+            calificacion: null,
+            requiere_accion: false,
+            color_visual: null,
+          }
           : row,
       ),
     )
@@ -2273,250 +2310,252 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
       </div>
 
       <div className="grid gap-4">
-        {filteredItems.map((item) => {
-          if (
-            item.tipo_item === 'seccion' ||
-            /^[0-9]+\.0$/.test(String(item.codigo_punto || '').trim())
-          ) {
-            const sectionKey = getSectionKeyFromItem(item)
-            const isCollapsed = collapsedSections[sectionKey]
-
-            return (
-              <motion.div
-                key={item.template_item_id}
-                initial={false}
-                animate={{ opacity: 1, y: 0 }}
-                className="rounded-[30px] bg-gradient-to-r from-slate-950 via-blue-950 to-cyan-900 text-white p-6 md:p-8 shadow-[0_16px_50px_rgba(15,23,42,0.18)] border border-white/20"
-              >
-                <button
-                  type="button"
-                  onClick={() => toggleSection(sectionKey)}
-                  className="w-full flex flex-col md:flex-row md:items-center justify-between gap-4 text-left"
-                >
-                  <div className="flex flex-col gap-3">
-                    <span className="inline-flex w-fit rounded-full bg-white/10 border border-white/20 px-4 py-1.5 text-xs font-black uppercase tracking-widest">
-                      Sección {item.codigo_punto}
-                    </span>
-                    <h2 className="text-2xl md:text-3xl font-black tracking-tight">
-                      {item.criterio}
-                    </h2>
-                  </div>
-
-                  <div className="shrink-0 w-12 h-12 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center">
-                    {isCollapsed ? (
-                      <ChevronRight className="w-6 h-6 text-cyan-200" />
-                    ) : (
-                      <ChevronDown className="w-6 h-6 text-cyan-200" />
-                    )}
-                  </div>
-                </button>
-              </motion.div>
-            )
-          }
-
-          if (item.tipo_item === 'subtitulo') {
-            return (
-              <motion.div
-                key={item.template_item_id}
-                initial={false}
-                animate={{ opacity: 1, y: 0 }}
-                className="rounded-[24px] bg-cyan-50 border border-cyan-100 text-cyan-900 px-6 py-4"
-              >
-                <div className="text-xs uppercase tracking-[0.18em] font-black text-cyan-600 mb-1">
-                  Subtítulo
-                </div>
-                <h3 className="text-xl font-black">
-                  {item.criterio}
-                </h3>
-              </motion.div>
-            )
-          }
-
-          const rating = getRatingConfig(item.calificacion)
-          const procesos = Array.isArray(item.procesos_evaluados)
-            ? item.procesos_evaluados
-            : []
+        {filteredActions.map((action) => {
+          const actionFiles = attachments.filter(
+            (att) => att.action_id === action.action_id,
+          )
 
           return (
             <motion.div
-              key={item.response_id || item.template_item_id}
+              key={action.action_id}
               initial={false}
               animate={{ opacity: 1, y: 0 }}
-              className={`bg-white rounded-[30px] p-5 md:p-6 border shadow-[0_14px_40px_rgba(15,23,42,0.08)] ${
-                rating ? rating.soft : 'border-white'
-              }`}
+              className="rounded-[30px] border border-slate-100 bg-white p-5 md:p-6 shadow-[0_14px_40px_rgba(15,23,42,0.08)]"
             >
-              <div className="flex flex-col 2xl:flex-row gap-6">
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2 mb-3">
-                    <span className="rounded-full bg-slate-950 text-white px-3 py-1 text-xs font-black">
-                      Punto {item.codigo_punto || item.orden}
-                    </span>
+              {/* Fila superior: información principal */}
+              <div className="mb-5">
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <span className="rounded-full bg-slate-950 text-white px-3 py-1 text-xs font-black">
+                    Punto {action.codigo_punto || 'S/C'}
+                  </span>
 
-                    {item.es_critico && (
-                      <span className="rounded-full bg-red-100 text-red-700 px-3 py-1 text-xs font-black flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3" />
-                        Crítico
-                      </span>
-                    )}
+                  <span className={`rounded-full border px-3 py-1 text-xs font-black ${getPriorityStyle(action.prioridad)}`}>
+                    Prioridad {action.prioridad}
+                  </span>
 
-                    {item.es_adicional && (
-                      <span className="rounded-full bg-blue-100 text-blue-700 px-3 py-1 text-xs font-black">
-                        Adicional
-                      </span>
-                    )}
+                  <span className={`rounded-full border px-3 py-1 text-xs font-black ${getSemaforoStyle(action.semaforo)}`}>
+                    {action.semaforo}
+                  </span>
 
-                    {rating && (
-                      <span className={`rounded-full px-3 py-1 text-xs font-black ${rating.text} bg-white border`}>
-                        {rating.description}
-                      </span>
-                    )}
-                  </div>
-
-                  <h3 className="text-lg md:text-xl font-black text-slate-950 leading-snug">
-                    {item.criterio}
-                  </h3>
-
-                  {item.tips && (
-                    <details className="mt-3 bg-slate-50 rounded-2xl p-4">
-                      <summary className="font-black text-slate-700 cursor-pointer">
-                        Ver tip de ayuda
-                      </summary>
-                      <p className="text-slate-600 mt-2">
-                        {item.tips}
-                      </p>
-                    </details>
-                  )}
-
-                  <div className="mt-5">
-                    <div className="text-xs uppercase tracking-widest font-black text-slate-400 mb-2">
-                      Procesos evaluados
-                    </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
-                      {procesosBase.map((proceso) => {
-                        const active = procesos.includes(proceso)
-
-                        return (
-                          <button
-                            key={proceso}
-                            type="button"
-                            onClick={() => toggleProceso(item, proceso)}
-                            className={`min-h-[40px] rounded-2xl px-3 py-2 text-[11px] font-black border transition-all text-center leading-tight flex items-center justify-center ${
-                              active
-                                ? 'bg-cyan-600 text-white border-cyan-600 shadow-sm'
-                                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-cyan-50'
-                            }`}
-                          >
-                            {proceso}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="mt-5">
-                    <div className="flex items-center justify-between gap-3 mb-2">
-                      <div className="text-xs uppercase tracking-widest font-black text-slate-400">
-                        Observaciones / evidencia textual
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateComments(
-                              item.response_id,
-                              commentDrafts[item.response_id] ?? item.comentarios ?? '',
-                            )
-                          }
-                          className="w-9 h-9 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-100 flex items-center justify-center"
-                          title="Guardar comentario"
-                        >
-                          <Save className="w-4 h-4" />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setEditingComments((prev) => ({
-                              ...prev,
-                              [item.response_id]: true,
-                            }))
-                          }
-                          className="w-9 h-9 rounded-xl bg-slate-50 hover:bg-cyan-50 text-slate-600 border border-slate-200 flex items-center justify-center"
-                          title="Editar comentario"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <textarea
-                      value={commentDrafts[item.response_id] ?? item.comentarios ?? ''}
-                      onChange={(event) =>
-                        setCommentDrafts((prev) => ({
-                          ...prev,
-                          [item.response_id]: event.target.value,
-                        }))
-                      }
-                      disabled={
-                        Boolean(item.comentarios) &&
-                        editingComments[item.response_id] !== true
-                      }
-                      placeholder="Comentarios u observaciones del auditor..."
-                      className={`w-full rounded-2xl border px-4 py-3 min-h-[90px] outline-none focus:ring-4 focus:ring-cyan-100 focus:border-cyan-400 ${
-                        Boolean(item.comentarios) &&
-                        editingComments[item.response_id] !== true
-                          ? 'bg-slate-100 text-slate-500 border-slate-200'
-                          : 'bg-slate-50 border-slate-200'
-                      }`}
-                    />
-                  </div>
+                  <span className="rounded-full bg-white border border-slate-200 px-3 py-1 text-xs font-black text-slate-600">
+                    Estado: {action.estado}
+                  </span>
                 </div>
 
-                <div className="2xl:w-72">
-                  <div className="text-xs uppercase tracking-widest font-black text-slate-400 mb-3">
-                    Calificación FCCA
-                  </div>
+                <h3 className="text-xl md:text-2xl font-black text-slate-950 leading-snug">
+                  {action.titulo}
+                </h3>
 
-                  <div className="grid grid-cols-5 2xl:grid-cols-1 gap-2">
-                    {ratingOptions.map((option) => (
+                <p className="text-slate-600 font-semibold mt-3 leading-relaxed">
+                  {action.descripcion}
+                </p>
+
+                <p className="text-slate-500 font-semibold mt-3">
+                  Responsable: {action.responsable || 'Sin asignar'}
+                </p>
+              </div>
+
+              {/* Fila inferior: seguimiento, evidencias, estado */}
+              <div className="grid grid-cols-1 xl:grid-cols-[1fr_1fr_300px] gap-4 items-start">
+                {/* Seguimiento */}
+                <div className="bg-slate-50 rounded-3xl p-4 border border-slate-100">
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <div>
+                      <div className="text-xs uppercase tracking-widest text-slate-400 font-black">
+                        Seguimiento / comentario
+                      </div>
+                      <div className="text-sm text-slate-500 font-semibold">
+                        Describe avance, corrección o cierre.
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
                       <button
-                        key={option.value}
                         type="button"
-                        disabled={savingId === item.response_id}
-                        onClick={() => updateRating(item.response_id, option.value)}
-                        className={`rounded-2xl px-4 py-3 font-black border transition-all flex items-center justify-center 2xl:justify-between gap-2 ${
-                          item.calificacion === option.value
-                            ? `${option.color} text-white border-transparent shadow-lg`
-                            : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
-                        }`}
+                        onClick={() => updateActionComment(action.action_id)}
+                        className="w-9 h-9 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-100 flex items-center justify-center"
+                        title="Guardar comentario"
                       >
-                        <span>{option.label}</span>
-                        <span className="hidden 2xl:inline text-xs opacity-80">
-                          {option.description}
-                        </span>
+                        <Save className="w-4 h-4" />
                       </button>
-                    ))}
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCommentDrafts((prev) => ({
+                            ...prev,
+                            [action.action_id]: action.comentarios || '',
+                          }))
+                        }
+                        className="w-9 h-9 rounded-xl bg-white hover:bg-cyan-50 text-slate-600 border border-slate-200 flex items-center justify-center"
+                        title="Editar comentario"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
 
-                  <button
-                    type="button"
-                    disabled={savingId === item.response_id || !item.calificacion}
-                    onClick={() => clearRating(item.response_id)}
-                    className={`mt-3 w-full rounded-2xl px-4 py-3 font-black border transition-all ${
-                      item.calificacion
-                        ? 'bg-white hover:bg-red-50 text-red-600 border-red-200'
-                        : 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'
-                    }`}
-                  >
-                    Limpiar calificación
-                  </button>
+                  <textarea
+                    value={commentDrafts[action.action_id] ?? action.comentarios ?? ''}
+                    onChange={(event) =>
+                      setCommentDrafts((prev) => ({
+                        ...prev,
+                        [action.action_id]: event.target.value,
+                      }))
+                    }
+                    placeholder="Describe el avance, corrección realizada o comentario de cierre..."
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 min-h-[120px] outline-none focus:ring-4 focus:ring-cyan-100 focus:border-cyan-400"
+                  />
+                </div>
 
-                  {savingId === item.response_id && (
-                    <div className="text-xs text-slate-500 font-bold mt-3">
-                      Guardando...
+                {/* Evidencias */}
+                <div className="bg-slate-50 rounded-3xl p-4 border border-slate-100">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3">
+                    <div>
+                      <div className="text-xs uppercase tracking-widest text-slate-400 font-black">
+                        Evidencias
+                      </div>
+                      <div className="text-sm text-slate-500 font-semibold">
+                        Adjunta soporte antes de cerrar.
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => uploadEvidence(action)}
+                      disabled={uploadingId === action.action_id}
+                      className="rounded-2xl bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-3 font-black disabled:opacity-60 flex items-center justify-center gap-2"
+                    >
+                      <Pencil className="w-4 h-4" />
+                      {uploadingId === action.action_id ? 'Subiendo...' : 'Subir'}
+                    </button>
+                  </div>
+
+                  {actionFiles.length === 0 ? (
+                    <div className="bg-white rounded-2xl p-4 text-slate-400 font-bold text-sm border border-slate-100">
+                      Sin evidencias cargadas.
+                    </div>
+                  ) : (
+                    <div className="grid gap-2">
+                      {actionFiles.map((att) => (
+                        <div
+                          key={att.attachment_id}
+                          className="flex flex-col md:flex-row md:items-center justify-between gap-2 rounded-2xl bg-white border border-slate-100 px-4 py-3"
+                        >
+                          <div className="min-w-0">
+                            <div className="font-black text-slate-900 truncate">
+                              {att.nombre_archivo}
+                            </div>
+
+                            <div className="text-xs text-slate-500 font-semibold">
+                              Cargado por {att.usuario || 'usuario'} ·{' '}
+                              {att.created_at
+                                ? new Date(att.created_at).toLocaleDateString('es-MX')
+                                : 'N/A'}
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const { data, error } = await supabase.storage
+                                .from('evidencias')
+                                .createSignedUrl(att.storage_path, 60)
+
+                              if (error) {
+                                alert(`No se pudo abrir evidencia: ${error.message}`)
+                                return
+                              }
+
+                              window.open(data.signedUrl, '_blank')
+                            }}
+                            className="rounded-xl bg-slate-50 border border-slate-200 px-4 py-2 text-sm font-black text-slate-700 hover:bg-cyan-50"
+                          >
+                            Ver archivo
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Estado / fecha */}
+                <div className="bg-white rounded-3xl p-4 border border-slate-100 shadow-sm">
+                  <div className="text-xs uppercase tracking-widest text-slate-400 font-black">
+                    Fecha compromiso
+                  </div>
+
+                  <div className="font-black text-slate-950 mt-1">
+                    {action.fecha_compromiso || 'N/A'}
+                  </div>
+
+                  <div className="text-xs uppercase tracking-widest text-slate-400 font-black mt-4">
+                    Cambiar estado
+                  </div>
+
+                  <select
+                    value={action.estado || 'pendiente'}
+                    onChange={(event) => updateActionStatus(action, event.target.value)}
+                    className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 outline-none focus:ring-4 focus:ring-cyan-100 focus:border-cyan-400 font-bold"
+                  >
+                    <option value="pendiente">Pendiente</option>
+                    <option value="en_proceso">En proceso</option>
+                    <option value="cerrada">Cerrada</option>
+                  </select>
+
+                  {action.estado === 'cerrada' && action.estado_validacion !== 'validada' && (
+                    <div className="mt-4 grid grid-cols-1 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => validateActionClosure(action, 'validada')}
+                        className="rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 font-black"
+                      >
+                        Validar cierre SGI
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => validateActionClosure(action, 'rechazada')}
+                        className="rounded-2xl bg-red-600 hover:bg-red-700 text-white px-4 py-3 font-black"
+                      >
+                        Rechazar cierre
+                      </button>
+                    </div>
+                  )}
+
+                  {action.estado_validacion && (
+                    <div className="mt-4 rounded-2xl bg-slate-50 border border-slate-100 p-3">
+                      <div className="text-xs uppercase tracking-widest text-slate-400 font-black">
+                        Validación SGI
+                      </div>
+
+                      <div className={`inline-flex mt-2 rounded-full px-3 py-1 text-xs font-black border ${action.estado_validacion === 'validada'
+                          ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                          : action.estado_validacion === 'rechazada'
+                            ? 'bg-red-100 text-red-700 border-red-200'
+                            : 'bg-amber-100 text-amber-700 border-amber-200'
+                        }`}>
+                        {action.estado_validacion}
+                      </div>
+
+                      {action.comentario_validacion && (
+                        <p className="text-sm text-slate-500 font-semibold mt-3">
+                          {action.comentario_validacion}
+                        </p>
+                      )}
+
+                      {action.validado_por_nombre && (
+                        <p className="text-xs text-slate-400 font-bold mt-2">
+                          Validado por: {action.validado_por_nombre}
+                        </p>
+                      )}
+
+                      {action.fecha_validacion && (
+                        <p className="text-xs text-slate-400 font-bold mt-1">
+                          Fecha validación:{' '}
+                          {new Date(action.fecha_validacion).toLocaleDateString('es-MX')}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2686,24 +2725,24 @@ export default function App() {
           </header>
 
           {selectedAuditId ? (
-  <AuditDetail
-    auditId={selectedAuditId}
-    onBack={() => setSelectedAuditId(null)}
-    onRefreshDashboard={loadDashboard}
-  />
-) : activeView === 'dashboard' || activeView === 'fcca' ? (
-  <Dashboard
-    dashboard={dashboard}
-    loading={loadingDashboard}
-    onOpenAudit={setSelectedAuditId}
-  />
-) : activeView === 'hallazgos' ? (
-  <FindingsView />
-) : activeView === 'acciones' ? (
-  <ActionsView />
-) : (
-  <ComingSoon title={currentMenuLabel} />
-)}
+            <AuditDetail
+              auditId={selectedAuditId}
+              onBack={() => setSelectedAuditId(null)}
+              onRefreshDashboard={loadDashboard}
+            />
+          ) : activeView === 'dashboard' || activeView === 'fcca' ? (
+            <Dashboard
+              dashboard={dashboard}
+              loading={loadingDashboard}
+              onOpenAudit={setSelectedAuditId}
+            />
+          ) : activeView === 'hallazgos' ? (
+            <FindingsView />
+          ) : activeView === 'acciones' ? (
+            <ActionsView />
+          ) : (
+            <ComingSoon title={currentMenuLabel} />
+          )}
         </main>
       </div>
     </div>
