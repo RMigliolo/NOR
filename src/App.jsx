@@ -1374,12 +1374,12 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
 
   const chartData = first
     ? [
-      { name: 'Verde', value: Number(first.puntos_verdes || 0), fill: chartPalette.green },
-      { name: 'Amarillo', value: Number(first.puntos_amarillos || 0), fill: chartPalette.amber },
-      { name: 'Rojo', value: Number(first.puntos_rojos || 0), fill: chartPalette.red },
-      { name: 'Gris', value: Number(first.puntos_grises || 0), fill: chartPalette.slate },
-      { name: 'Pendiente', value: Number(first.puntos_pendientes || 0), fill: '#020617' },
-    ]
+        { name: 'Verde', value: Number(first.puntos_verdes || 0), fill: chartPalette.green },
+        { name: 'Amarillo', value: Number(first.puntos_amarillos || 0), fill: chartPalette.amber },
+        { name: 'Rojo', value: Number(first.puntos_rojos || 0), fill: chartPalette.red },
+        { name: 'Gris', value: Number(first.puntos_grises || 0), fill: chartPalette.slate },
+        { name: 'Pendiente', value: Number(first.puntos_pendientes || 0), fill: '#020617' },
+      ]
     : []
 
   const sectionData = fccaSectionWeights.map((sectionItem, index) => {
@@ -1532,8 +1532,9 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-6 gap-5">
+    <div className="space-y-5">
+      {/* KPIS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-4">
         <KpiCard
           title="Score global"
           value={`${first.score_global || 0}%`}
@@ -1583,20 +1584,21 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
         />
       </div>
 
-      <div className="grid grid-cols-1 2xl:grid-cols-[1.2fr_0.8fr] gap-6">
+      {/* FILA EJECUTIVA */}
+      <div className="grid grid-cols-1 2xl:grid-cols-[1.25fr_0.75fr] gap-5">
         <motion.div
           initial={false}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-[32px] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white"
+          className="bg-white rounded-[30px] p-5 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white"
         >
-          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-6">
+          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-5">
             <div>
               <div className="inline-flex items-center gap-2 bg-cyan-50 text-cyan-700 rounded-full px-3 py-1 text-xs font-black mb-3">
                 <ClipboardList className="w-4 h-4" />
                 Auditoría activa
               </div>
 
-              <h2 className="text-2xl md:text-3xl font-black text-slate-950">
+              <h2 className="text-2xl font-black text-slate-950">
                 {first.auditoria}
               </h2>
 
@@ -1614,12 +1616,12 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 text-sm">
             <div className="bg-slate-50 rounded-2xl p-4">
               <div className="text-slate-400 font-black uppercase tracking-widest">
                 Auditor
               </div>
-              <div className="text-slate-950 font-black text-lg">
+              <div className="text-slate-950 font-black text-base">
                 {first.auditor || 'Sin asignar'}
               </div>
             </div>
@@ -1628,7 +1630,7 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
               <div className="text-slate-400 font-black uppercase tracking-widest">
                 Responsable
               </div>
-              <div className="text-slate-950 font-black text-lg">
+              <div className="text-slate-950 font-black text-base">
                 {first.responsable || 'Sin asignar'}
               </div>
             </div>
@@ -1637,7 +1639,7 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
               <div className="text-slate-400 font-black uppercase tracking-widest">
                 Fecha inicio
               </div>
-              <div className="text-slate-950 font-black text-lg">
+              <div className="text-slate-950 font-black text-base">
                 {first.fecha_inicio || 'N/A'}
               </div>
             </div>
@@ -1646,7 +1648,7 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
               <div className="text-slate-400 font-black uppercase tracking-widest">
                 Fecha compromiso
               </div>
-              <div className="text-slate-950 font-black text-lg">
+              <div className="text-slate-950 font-black text-base">
                 {first.fecha_compromiso || 'N/A'}
               </div>
             </div>
@@ -1656,29 +1658,29 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
         <motion.div
           initial={false}
           animate={{ opacity: 1, y: 0 }}
-          className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-cyan-900 rounded-[32px] p-6 shadow-[0_24px_70px_rgba(15,23,42,0.22)] border border-white/10 text-white"
+          className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-cyan-900 rounded-[30px] p-5 shadow-[0_24px_70px_rgba(15,23,42,0.22)] border border-white/10 text-white"
         >
-          <div className="absolute -top-24 -right-20 w-64 h-64 bg-cyan-400/20 blur-3xl rounded-full" />
-          <div className="absolute -bottom-24 -left-20 w-64 h-64 bg-violet-400/20 blur-3xl rounded-full" />
+          <div className="absolute -top-20 -right-16 w-52 h-52 bg-cyan-400/20 blur-3xl rounded-full" />
+          <div className="absolute -bottom-20 -left-16 w-52 h-52 bg-violet-400/20 blur-3xl rounded-full" />
 
           <div className="relative z-10">
-            <h2 className="text-2xl font-black mb-1">
+            <h2 className="text-xl font-black mb-1">
               Score ponderado FCCA
             </h2>
 
-            <p className="text-cyan-100 font-semibold mb-4">
-              Basado en la ponderación oficial por sección.
+            <p className="text-cyan-100 font-semibold text-sm mb-2">
+              Basado en ponderación oficial por sección.
             </p>
 
-            <div className="h-64">
+            <div className="h-[210px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={weightedDonutData}
                     dataKey="value"
                     nameKey="name"
-                    innerRadius={74}
-                    outerRadius={102}
+                    innerRadius={60}
+                    outerRadius={84}
                     paddingAngle={4}
                     startAngle={90}
                     endAngle={-270}
@@ -1694,10 +1696,10 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
 
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="text-center mt-12">
-                <div className="text-5xl font-black">
+                <div className="text-4xl font-black">
                   {weightedScore}%
                 </div>
-                <div className="text-xs uppercase tracking-widest text-cyan-100 font-black">
+                <div className="text-[10px] uppercase tracking-widest text-cyan-100 font-black">
                   Ponderado
                 </div>
               </div>
@@ -1706,19 +1708,20 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
         </motion.div>
       </div>
 
-      <div className="grid grid-cols-1 2xl:grid-cols-[1.1fr_0.9fr] gap-6">
+      {/* FILA SECCIONES Y CRITICOS */}
+      <div className="grid grid-cols-1 2xl:grid-cols-[1.15fr_0.85fr] gap-5">
         <motion.div
           initial={false}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-[32px] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white"
+          className="bg-white rounded-[30px] p-5 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white"
         >
-          <div className="flex items-start justify-between gap-4 mb-5">
+          <div className="flex items-start justify-between gap-4 mb-4">
             <div>
-              <h2 className="text-2xl font-black text-slate-950">
+              <h2 className="text-xl font-black text-slate-950">
                 Cumplimiento por sección FCCA
               </h2>
 
-              <p className="text-slate-500 font-semibold">
+              <p className="text-slate-500 font-semibold text-sm">
                 Avance ponderado por sección oficial.
               </p>
             </div>
@@ -1730,45 +1733,45 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
             )}
           </div>
 
-          <div className="grid gap-3">
+          <div className="grid gap-2">
             {sectionData.map((sectionItem) => (
               <div
                 key={sectionItem.code}
-                className="rounded-3xl bg-slate-50 border border-slate-100 p-4"
+                className="rounded-2xl bg-slate-50 border border-slate-100 p-3"
               >
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-slate-950 text-white px-3 py-1 text-xs font-black">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <span className="rounded-full bg-slate-950 text-white px-2.5 py-1 text-[10px] font-black">
                         {sectionItem.code}
                       </span>
 
-                      <span className="rounded-full bg-white border border-slate-200 px-3 py-1 text-xs font-black text-slate-600">
+                      <span className="rounded-full bg-white border border-slate-200 px-2.5 py-1 text-[10px] font-black text-slate-600">
                         Peso {sectionItem.weight}%
                       </span>
                     </div>
 
-                    <div className="font-black text-slate-950 mt-2">
+                    <div className="font-black text-slate-950 text-sm truncate">
                       {sectionItem.title}
                     </div>
 
-                    <div className="text-xs text-slate-500 font-bold">
+                    <div className="text-[11px] text-slate-500 font-bold">
                       {sectionItem.evaluated}/{sectionItem.total} puntos evaluados
                     </div>
                   </div>
 
-                  <div className="text-right">
-                    <div className="text-3xl font-black text-slate-950">
+                  <div className="text-right shrink-0">
+                    <div className="text-2xl font-black text-slate-950">
                       {sectionItem.compliance}%
                     </div>
 
-                    <div className="text-xs text-cyan-700 font-black">
+                    <div className="text-[11px] text-cyan-700 font-black">
                       Aporta {sectionItem.contribution}%
                     </div>
                   </div>
                 </div>
 
-                <div className="h-3 rounded-full bg-white overflow-hidden border border-slate-100">
+                <div className="h-2 rounded-full bg-white overflow-hidden border border-slate-100">
                   <div
                     className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 shadow-[0_8px_20px_rgba(8,145,178,0.35)]"
                     style={{ width: `${sectionItem.compliance}%` }}
@@ -1782,25 +1785,25 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
         <motion.div
           initial={false}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-[32px] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white"
+          className="bg-white rounded-[30px] p-5 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white"
         >
-          <h2 className="text-2xl font-black text-slate-950 mb-1">
+          <h2 className="text-xl font-black text-slate-950 mb-1">
             Críticos FCCA
           </h2>
 
-          <p className="text-slate-500 font-semibold mb-5">
+          <p className="text-slate-500 font-semibold text-sm mb-3">
             Seguimiento especial de puntos críticos.
           </p>
 
-          <div className="h-72">
+          <div className="h-[220px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={criticalChartData}
                   dataKey="value"
                   nameKey="name"
-                  innerRadius={72}
-                  outerRadius={108}
+                  innerRadius={56}
+                  outerRadius={82}
                   paddingAngle={4}
                 >
                   {criticalChartData.map((entry) => (
@@ -1808,35 +1811,40 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
                   ))}
                 </Pie>
                 <Tooltip />
-                <Legend />
+                <Legend
+                  verticalAlign="bottom"
+                  height={24}
+                  iconSize={8}
+                  wrapperStyle={{ fontSize: 11, fontWeight: 700 }}
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>
 
-          <div className="grid grid-cols-3 gap-3 mt-3">
+          <div className="grid grid-cols-3 gap-3 mt-2">
             <div className="rounded-2xl bg-emerald-50 p-3 text-center">
-              <div className="text-2xl font-black text-emerald-700">
+              <div className="text-xl font-black text-emerald-700">
                 {criticalCompliant.length}
               </div>
-              <div className="text-xs font-black text-emerald-700">
+              <div className="text-[11px] font-black text-emerald-700">
                 Cumplen
               </div>
             </div>
 
             <div className="rounded-2xl bg-red-50 p-3 text-center">
-              <div className="text-2xl font-black text-red-700">
+              <div className="text-xl font-black text-red-700">
                 {criticalNonCompliant.length}
               </div>
-              <div className="text-xs font-black text-red-700">
+              <div className="text-[11px] font-black text-red-700">
                 No cumplen
               </div>
             </div>
 
             <div className="rounded-2xl bg-amber-50 p-3 text-center">
-              <div className="text-2xl font-black text-amber-700">
+              <div className="text-xl font-black text-amber-700">
                 {criticalPending}
               </div>
-              <div className="text-xs font-black text-amber-700">
+              <div className="text-[11px] font-black text-amber-700">
                 Pendientes
               </div>
             </div>
@@ -1844,89 +1852,97 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
         </motion.div>
       </div>
 
-      <motion.div
-        initial={false}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-white rounded-[32px] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white"
-      >
-        <h2 className="text-2xl font-black text-slate-950 mb-1">
-          Distribución general
-        </h2>
-
-        <p className="text-slate-500 font-semibold mb-5">
-          Estado por calificación.
-        </p>
-
-        <div className="h-72">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis allowDecimals={false} />
-              <Tooltip />
-              <Bar dataKey="value" radius={[12, 12, 0, 0]}>
-                {chartData.map((entry) => (
-                  <Cell key={entry.name} fill={entry.fill} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </motion.div>
-
-      {processData.length > 0 && (
+      {/* FILA GRAFICAS COMPACTAS */}
+      <div className="grid grid-cols-1 2xl:grid-cols-[0.9fr_1.1fr] gap-5">
         <motion.div
           initial={false}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-[32px] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white"
+          className="bg-white rounded-[30px] p-5 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white"
         >
-          <h2 className="text-2xl font-black text-slate-950 mb-1">
-            Cumplimiento por proceso
+          <h2 className="text-xl font-black text-slate-950 mb-1">
+            Distribución general
           </h2>
 
-          <p className="text-slate-500 font-semibold mb-5">
-            Calculado con base en los procesos seleccionados en la auditoría.
+          <p className="text-slate-500 font-semibold text-sm mb-3">
+            Estado por calificación.
           </p>
 
-          <div className="h-[440px]">
+          <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={processData}
-                layout="vertical"
-                margin={{ top: 10, right: 30, left: 105, bottom: 10 }}
-              >
+              <BarChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" domain={[0, 100]} />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  width={150}
-                  tick={{ fontSize: 11, fontWeight: 700 }}
-                />
+                <XAxis dataKey="name" tick={{ fontSize: 11, fontWeight: 700 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11, fontWeight: 700 }} />
                 <Tooltip />
-                <Bar
-                  dataKey="cumplimiento"
-                  radius={[0, 12, 12, 0]}
-                  name="Cumplimiento"
-                >
-                  {processData.map((entry) => (
-                    <Cell
-                      key={entry.name}
-                      fill={
-                        entry.cumplimiento >= 90
-                          ? chartPalette.green
-                          : entry.cumplimiento >= 70
-                            ? chartPalette.amber
-                            : chartPalette.red
-                      }
-                    />
+                <Bar dataKey="value" radius={[10, 10, 0, 0]} barSize={42}>
+                  {chartData.map((entry) => (
+                    <Cell key={entry.name} fill={entry.fill} />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
         </motion.div>
-      )}
+
+        {processData.length > 0 && (
+          <motion.div
+            initial={false}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-[30px] p-5 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white"
+          >
+            <h2 className="text-xl font-black text-slate-950 mb-1">
+              Cumplimiento por proceso
+            </h2>
+
+            <p className="text-slate-500 font-semibold text-sm mb-3">
+              Calculado con base en los procesos seleccionados en la auditoría.
+            </p>
+
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={processData}
+                  layout="vertical"
+                  margin={{ top: 10, right: 20, left: 80, bottom: 10 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis
+                    type="number"
+                    domain={[0, 100]}
+                    tick={{ fontSize: 11, fontWeight: 700 }}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    width={120}
+                    tick={{ fontSize: 11, fontWeight: 700 }}
+                  />
+                  <Tooltip />
+                  <Bar
+                    dataKey="cumplimiento"
+                    radius={[0, 10, 10, 0]}
+                    name="Cumplimiento"
+                    barSize={28}
+                  >
+                    {processData.map((entry) => (
+                      <Cell
+                        key={entry.name}
+                        fill={
+                          entry.cumplimiento >= 90
+                            ? chartPalette.green
+                            : entry.cumplimiento >= 70
+                              ? chartPalette.amber
+                              : chartPalette.red
+                        }
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </motion.div>
+        )}
+      </div>
     </div>
   )
 }
