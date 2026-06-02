@@ -2326,252 +2326,253 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
       </div>
 
       <div className="grid gap-4">
-        {filteredActions.map((action) => {
-          const actionFiles = attachments.filter(
-            (att) => att.action_id === action.action_id,
-          )
+        {filteredItems.map((item) => {
+          if (
+            item.tipo_item === 'seccion' ||
+            /^[0-9]+\.0$/.test(String(item.codigo_punto || '').trim())
+          ) {
+            const sectionKey = getSectionKeyFromItem(item)
+            const isCollapsed = collapsedSections[sectionKey]
+
+            return (
+              <motion.div
+                key={item.template_item_id}
+                initial={false}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-[30px] bg-gradient-to-r from-slate-950 via-blue-950 to-cyan-900 text-white p-6 md:p-8 shadow-[0_16px_50px_rgba(15,23,42,0.18)] border border-white/20"
+              >
+                <button
+                  type="button"
+                  onClick={() => toggleSection(sectionKey)}
+                  className="w-full flex flex-col md:flex-row md:items-center justify-between gap-4 text-left"
+                >
+                  <div className="flex flex-col gap-3">
+                    <span className="inline-flex w-fit rounded-full bg-white/10 border border-white/20 px-4 py-1.5 text-xs font-black uppercase tracking-widest">
+                      Sección {item.codigo_punto}
+                    </span>
+
+                    <h2 className="text-2xl md:text-3xl font-black tracking-tight">
+                      {item.criterio}
+                    </h2>
+                  </div>
+
+                  <div className="shrink-0 w-12 h-12 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center">
+                    {isCollapsed ? (
+                      <ChevronRight className="w-6 h-6 text-cyan-200" />
+                    ) : (
+                      <ChevronDown className="w-6 h-6 text-cyan-200" />
+                    )}
+                  </div>
+                </button>
+              </motion.div>
+            )
+          }
+
+          if (item.tipo_item === 'subtitulo') {
+            return (
+              <motion.div
+                key={item.template_item_id}
+                initial={false}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-[24px] bg-cyan-50 border border-cyan-100 text-cyan-900 px-6 py-4"
+              >
+                <div className="text-xs uppercase tracking-[0.18em] font-black text-cyan-600 mb-1">
+                  Subtítulo
+                </div>
+
+                <h3 className="text-xl font-black">
+                  {item.criterio}
+                </h3>
+              </motion.div>
+            )
+          }
+
+          const rating = getRatingConfig(item.calificacion)
+
+          const procesos = Array.isArray(item.procesos_evaluados)
+            ? item.procesos_evaluados
+            : []
 
           return (
             <motion.div
-              key={action.action_id}
+              key={item.response_id || item.template_item_id}
               initial={false}
               animate={{ opacity: 1, y: 0 }}
-              className="rounded-[30px] border border-slate-100 bg-white p-5 md:p-6 shadow-[0_14px_40px_rgba(15,23,42,0.08)]"
+              className={`bg-white rounded-[30px] p-5 md:p-6 border shadow-[0_14px_40px_rgba(15,23,42,0.08)] ${
+                rating ? rating.soft : 'border-white'
+              }`}
             >
-              {/* Fila superior: información principal */}
-              <div className="mb-5">
-                <div className="flex flex-wrap items-center gap-2 mb-3">
-                  <span className="rounded-full bg-slate-950 text-white px-3 py-1 text-xs font-black">
-                    Punto {action.codigo_punto || 'S/C'}
-                  </span>
+              <div className="flex flex-col 2xl:flex-row gap-6">
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 mb-3">
+                    <span className="rounded-full bg-slate-950 text-white px-3 py-1 text-xs font-black">
+                      Punto {item.codigo_punto || item.orden}
+                    </span>
 
-                  <span className={`rounded-full border px-3 py-1 text-xs font-black ${getPriorityStyle(action.prioridad)}`}>
-                    Prioridad {action.prioridad}
-                  </span>
+                    {item.es_critico && (
+                      <span className="rounded-full bg-red-100 text-red-700 px-3 py-1 text-xs font-black flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" />
+                        Crítico
+                      </span>
+                    )}
 
-                  <span className={`rounded-full border px-3 py-1 text-xs font-black ${getSemaforoStyle(action.semaforo)}`}>
-                    {action.semaforo}
-                  </span>
+                    {item.es_adicional && (
+                      <span className="rounded-full bg-blue-100 text-blue-700 px-3 py-1 text-xs font-black">
+                        Adicional
+                      </span>
+                    )}
 
-                  <span className="rounded-full bg-white border border-slate-200 px-3 py-1 text-xs font-black text-slate-600">
-                    Estado: {action.estado}
-                  </span>
-                </div>
-
-                <h3 className="text-xl md:text-2xl font-black text-slate-950 leading-snug">
-                  {action.titulo}
-                </h3>
-
-                <p className="text-slate-600 font-semibold mt-3 leading-relaxed">
-                  {action.descripcion}
-                </p>
-
-                <p className="text-slate-500 font-semibold mt-3">
-                  Responsable: {action.responsable || 'Sin asignar'}
-                </p>
-              </div>
-
-              {/* Fila inferior: seguimiento, evidencias, estado */}
-              <div className="grid grid-cols-1 xl:grid-cols-[1fr_1fr_300px] gap-4 items-start">
-                {/* Seguimiento */}
-                <div className="bg-slate-50 rounded-3xl p-4 border border-slate-100">
-                  <div className="flex items-center justify-between gap-3 mb-2">
-                    <div>
-                      <div className="text-xs uppercase tracking-widest text-slate-400 font-black">
-                        Seguimiento / comentario
-                      </div>
-                      <div className="text-sm text-slate-500 font-semibold">
-                        Describe avance, corrección o cierre.
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => updateActionComment(action.action_id)}
-                        className="w-9 h-9 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-100 flex items-center justify-center"
-                        title="Guardar comentario"
-                      >
-                        <Save className="w-4 h-4" />
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setCommentDrafts((prev) => ({
-                            ...prev,
-                            [action.action_id]: action.comentarios || '',
-                          }))
-                        }
-                        className="w-9 h-9 rounded-xl bg-white hover:bg-cyan-50 text-slate-600 border border-slate-200 flex items-center justify-center"
-                        title="Editar comentario"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
-                    </div>
+                    {rating && (
+                      <span className={`rounded-full px-3 py-1 text-xs font-black ${rating.text} bg-white border`}>
+                        {rating.description}
+                      </span>
+                    )}
                   </div>
 
-                  <textarea
-                    value={commentDrafts[action.action_id] ?? action.comentarios ?? ''}
-                    onChange={(event) =>
-                      setCommentDrafts((prev) => ({
-                        ...prev,
-                        [action.action_id]: event.target.value,
-                      }))
-                    }
-                    placeholder="Describe el avance, corrección realizada o comentario de cierre..."
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 min-h-[120px] outline-none focus:ring-4 focus:ring-cyan-100 focus:border-cyan-400"
-                  />
-                </div>
+                  <h3 className="text-lg md:text-xl font-black text-slate-950 leading-snug">
+                    {item.criterio}
+                  </h3>
 
-                {/* Evidencias */}
-                <div className="bg-slate-50 rounded-3xl p-4 border border-slate-100">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3">
-                    <div>
-                      <div className="text-xs uppercase tracking-widest text-slate-400 font-black">
-                        Evidencias
-                      </div>
-                      <div className="text-sm text-slate-500 font-semibold">
-                        Adjunta soporte antes de cerrar.
-                      </div>
+                  {item.tips && (
+                    <details className="mt-3 bg-slate-50 rounded-2xl p-4">
+                      <summary className="font-black text-slate-700 cursor-pointer">
+                        Ver tip de ayuda
+                      </summary>
+                      <p className="text-slate-600 mt-2">
+                        {item.tips}
+                      </p>
+                    </details>
+                  )}
+
+                  <div className="mt-5">
+                    <div className="text-xs uppercase tracking-widest font-black text-slate-400 mb-2">
+                      Procesos evaluados
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => uploadEvidence(action)}
-                      disabled={uploadingId === action.action_id}
-                      className="rounded-2xl bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-3 font-black disabled:opacity-60 flex items-center justify-center gap-2"
-                    >
-                      <Pencil className="w-4 h-4" />
-                      {uploadingId === action.action_id ? 'Subiendo...' : 'Subir'}
-                    </button>
-                  </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
+                      {procesosBase.map((proceso) => {
+                        const active = procesos.includes(proceso)
 
-                  {actionFiles.length === 0 ? (
-                    <div className="bg-white rounded-2xl p-4 text-slate-400 font-bold text-sm border border-slate-100">
-                      Sin evidencias cargadas.
-                    </div>
-                  ) : (
-                    <div className="grid gap-2">
-                      {actionFiles.map((att) => (
-                        <div
-                          key={att.attachment_id}
-                          className="flex flex-col md:flex-row md:items-center justify-between gap-2 rounded-2xl bg-white border border-slate-100 px-4 py-3"
-                        >
-                          <div className="min-w-0">
-                            <div className="font-black text-slate-900 truncate">
-                              {att.nombre_archivo}
-                            </div>
-
-                            <div className="text-xs text-slate-500 font-semibold">
-                              Cargado por {att.usuario || 'usuario'} ·{' '}
-                              {att.created_at
-                                ? new Date(att.created_at).toLocaleDateString('es-MX')
-                                : 'N/A'}
-                            </div>
-                          </div>
-
+                        return (
                           <button
+                            key={proceso}
                             type="button"
-                            onClick={async () => {
-                              const { data, error } = await supabase.storage
-                                .from('evidencias')
-                                .createSignedUrl(att.storage_path, 60)
-
-                              if (error) {
-                                alert(`No se pudo abrir evidencia: ${error.message}`)
-                                return
-                              }
-
-                              window.open(data.signedUrl, '_blank')
-                            }}
-                            className="rounded-xl bg-slate-50 border border-slate-200 px-4 py-2 text-sm font-black text-slate-700 hover:bg-cyan-50"
+                            onClick={() => toggleProceso(item, proceso)}
+                            className={`min-h-[40px] rounded-2xl px-3 py-2 text-[11px] font-black border transition-all text-center leading-tight flex items-center justify-center ${
+                              active
+                                ? 'bg-cyan-600 text-white border-cyan-600 shadow-sm'
+                                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-cyan-50'
+                            }`}
                           >
-                            Ver archivo
+                            {proceso}
                           </button>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
-                  )}
+                  </div>
+
+                  <div className="mt-5">
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <div className="text-xs uppercase tracking-widest font-black text-slate-400">
+                        Observaciones / evidencia textual
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateComments(
+                              item.response_id,
+                              commentDrafts[item.response_id] ?? item.comentarios ?? '',
+                            )
+                          }
+                          className="w-9 h-9 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-100 flex items-center justify-center"
+                          title="Guardar comentario"
+                        >
+                          <Save className="w-4 h-4" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEditingComments((prev) => ({
+                              ...prev,
+                              [item.response_id]: true,
+                            }))
+                          }
+                          className="w-9 h-9 rounded-xl bg-slate-50 hover:bg-cyan-50 text-slate-600 border border-slate-200 flex items-center justify-center"
+                          title="Editar comentario"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <textarea
+                      value={commentDrafts[item.response_id] ?? item.comentarios ?? ''}
+                      onChange={(event) =>
+                        setCommentDrafts((prev) => ({
+                          ...prev,
+                          [item.response_id]: event.target.value,
+                        }))
+                      }
+                      disabled={
+                        Boolean(item.comentarios) &&
+                        editingComments[item.response_id] !== true
+                      }
+                      placeholder="Comentarios u observaciones del auditor..."
+                      className={`w-full rounded-2xl border px-4 py-3 min-h-[90px] outline-none focus:ring-4 focus:ring-cyan-100 focus:border-cyan-400 ${
+                        Boolean(item.comentarios) &&
+                        editingComments[item.response_id] !== true
+                          ? 'bg-slate-100 text-slate-500 border-slate-200'
+                          : 'bg-slate-50 border-slate-200'
+                      }`}
+                    />
+                  </div>
                 </div>
 
-                {/* Estado / fecha */}
-                <div className="bg-white rounded-3xl p-4 border border-slate-100 shadow-sm">
-                  <div className="text-xs uppercase tracking-widest text-slate-400 font-black">
-                    Fecha compromiso
+                <div className="2xl:w-72">
+                  <div className="text-xs uppercase tracking-widest font-black text-slate-400 mb-3">
+                    Calificación FCCA
                   </div>
 
-                  <div className="font-black text-slate-950 mt-1">
-                    {action.fecha_compromiso || 'N/A'}
+                  <div className="grid grid-cols-5 2xl:grid-cols-1 gap-2">
+                    {ratingOptions.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        disabled={savingId === item.response_id}
+                        onClick={() => updateRating(item.response_id, option.value)}
+                        className={`rounded-2xl px-4 py-3 font-black border transition-all flex items-center justify-center 2xl:justify-between gap-2 ${
+                          item.calificacion === option.value
+                            ? `${option.color} text-white border-transparent shadow-lg`
+                            : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                        }`}
+                      >
+                        <span>{option.label}</span>
+                        <span className="hidden 2xl:inline text-xs opacity-80">
+                          {option.description}
+                        </span>
+                      </button>
+                    ))}
                   </div>
 
-                  <div className="text-xs uppercase tracking-widest text-slate-400 font-black mt-4">
-                    Cambiar estado
-                  </div>
-
-                  <select
-                    value={action.estado || 'pendiente'}
-                    onChange={(event) => updateActionStatus(action, event.target.value)}
-                    className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 outline-none focus:ring-4 focus:ring-cyan-100 focus:border-cyan-400 font-bold"
+                  <button
+                    type="button"
+                    disabled={savingId === item.response_id || !item.calificacion}
+                    onClick={() => clearRating(item.response_id)}
+                    className={`mt-3 w-full rounded-2xl px-4 py-3 font-black border transition-all ${
+                      item.calificacion
+                        ? 'bg-white hover:bg-red-50 text-red-600 border-red-200'
+                        : 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'
+                    }`}
                   >
-                    <option value="pendiente">Pendiente</option>
-                    <option value="en_proceso">En proceso</option>
-                    <option value="cerrada">Cerrada</option>
-                  </select>
+                    Limpiar calificación
+                  </button>
 
-                  {action.estado === 'cerrada' && action.estado_validacion !== 'validada' && (
-                    <div className="mt-4 grid grid-cols-1 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => validateActionClosure(action, 'validada')}
-                        className="rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 font-black"
-                      >
-                        Validar cierre SGI
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => validateActionClosure(action, 'rechazada')}
-                        className="rounded-2xl bg-red-600 hover:bg-red-700 text-white px-4 py-3 font-black"
-                      >
-                        Rechazar cierre
-                      </button>
-                    </div>
-                  )}
-
-                  {action.estado_validacion && (
-                    <div className="mt-4 rounded-2xl bg-slate-50 border border-slate-100 p-3">
-                      <div className="text-xs uppercase tracking-widest text-slate-400 font-black">
-                        Validación SGI
-                      </div>
-
-                      <div className={`inline-flex mt-2 rounded-full px-3 py-1 text-xs font-black border ${action.estado_validacion === 'validada'
-                          ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                          : action.estado_validacion === 'rechazada'
-                            ? 'bg-red-100 text-red-700 border-red-200'
-                            : 'bg-amber-100 text-amber-700 border-amber-200'
-                        }`}>
-                        {action.estado_validacion}
-                      </div>
-
-                      {action.comentario_validacion && (
-                        <p className="text-sm text-slate-500 font-semibold mt-3">
-                          {action.comentario_validacion}
-                        </p>
-                      )}
-
-                      {action.validado_por_nombre && (
-                        <p className="text-xs text-slate-400 font-bold mt-2">
-                          Validado por: {action.validado_por_nombre}
-                        </p>
-                      )}
-
-                      {action.fecha_validacion && (
-                        <p className="text-xs text-slate-400 font-bold mt-1">
-                          Fecha validación:{' '}
-                          {new Date(action.fecha_validacion).toLocaleDateString('es-MX')}
-                        </p>
-                      )}
+                  {savingId === item.response_id && (
+                    <div className="text-xs text-slate-500 font-bold mt-3">
+                      Guardando...
                     </div>
                   )}
                 </div>
@@ -2583,6 +2584,7 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
     </div>
   )
 }
+
 
 export default function App() {
   const [session, setSession] = useState(null)
@@ -2683,6 +2685,16 @@ export default function App() {
     setProfile(null)
   }
 
+  const handleOpenAudit = (auditId) => {
+    if (!auditId) {
+      alert('No se encontró el ID de la auditoría.')
+      return
+    }
+
+    setSelectedAuditId(auditId)
+    setActiveView('fcca')
+  }
+
   const currentMenuLabel = menuItems.find((item) => item.id === activeView)?.label || 'Dashboard'
 
   if (!session) {
@@ -2750,7 +2762,7 @@ export default function App() {
             <Dashboard
               dashboard={dashboard}
               loading={loadingDashboard}
-              onOpenAudit={setSelectedAuditId}
+              onOpenAudit={handleOpenAudit}
             />
           ) : activeView === 'hallazgos' ? (
             <FindingsView />
