@@ -1320,6 +1320,7 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
   const first = dashboard?.[0]
   const [detailRows, setDetailRows] = useState([])
   const [detailLoading, setDetailLoading] = useState(false)
+  const [processDashboardRows, setProcessDashboardRows] = useState([])
 
   useEffect(() => {
     if (!first?.audit_id) return
@@ -1343,6 +1344,19 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
 
       if (active) {
         setDetailRows(data || [])
+
+        const { data: processDataResult, error: processError } = await supabase
+          .from('v_fcca_process_dashboard')
+          .select('*')
+          .eq('audit_id', first.audit_id)
+
+        if (processError) {
+          console.warn('Dashboard por proceso no disponible todavía:', processError.message)
+          setProcessDashboardRows([])
+        } else {
+          setProcessDashboardRows(processDataResult || [])
+        }
+
         setDetailLoading(false)
       }
     }
@@ -1443,7 +1457,7 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
     },
   ]
 
-  const processData = procesosBase
+  const fallbackProcessData = procesosBase
     .map((processName) => {
       const rows = detailRows.filter((row) => {
         if (row.tipo_item !== 'pregunta') return false
@@ -1474,6 +1488,18 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
     })
     .filter((item) => item.puntos > 0)
     .sort((a, b) => b.cumplimiento - a.cumplimiento)
+
+  const processData = processDashboardRows.length > 0
+    ? processDashboardRows
+        .map((row) => ({
+          name: row.proceso,
+          cumplimiento: Number(row.score_proceso || 0),
+          puntos: Number(row.total_respuestas_proceso || 0),
+          evaluados: Number(row.puntos_evaluados || 0),
+        }))
+        .filter((item) => item.puntos > 0)
+        .sort((a, b) => b.cumplimiento - a.cumplimiento)
+    : fallbackProcessData
 
   const criticalRows = detailRows.filter(
     (row) => row.tipo_item === 'pregunta' && row.es_critico,
@@ -2256,6 +2282,26 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
     await onRefreshDashboard()
   }
 
+  const syncProcessFindingAction = async (item, value, processResponseId = null) => {
+    if (!item?.template_item_id || !processAudit) return
+
+    const { error } = await supabase.rpc('sync_process_finding_action', {
+      target_audit_id: auditId,
+      target_template_item_id: item.template_item_id,
+      target_response_id: item.response_id || null,
+      target_process_response_id: processResponseId,
+      target_proceso: processAudit,
+      target_calificacion: value,
+      target_codigo_punto: item.codigo_punto || null,
+      target_criterio: item.criterio || null,
+      target_es_critico: Boolean(item.es_critico),
+    })
+
+    if (error) {
+      console.warn('No se pudo sincronizar hallazgo/acción por proceso:', error.message)
+    }
+  }
+
   const updateProcessRating = async (item, value) => {
     if (!item?.template_item_id || !processAudit) return
 
@@ -2304,6 +2350,8 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
 
       return [...prev, updatedRow]
     })
+
+    await syncProcessFindingAction(item, value, data)
 
     setSavingId(null)
     await onRefreshDashboard()
@@ -2391,6 +2439,8 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
 
       return [...prev, updatedRow]
     })
+
+    await syncProcessFindingAction(item, null, data)
 
     setSavingId(null)
     await onRefreshDashboard()
