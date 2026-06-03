@@ -1953,11 +1953,15 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
 
 function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
   const [items, setItems] = useState([])
+  const [processResponses, setProcessResponses] = useState([])
   const [loading, setLoading] = useState(true)
+  const [processLoading, setProcessLoading] = useState(false)
   const [savingId, setSavingId] = useState(null)
   const [filter, setFilter] = useState('todos')
   const [search, setSearch] = useState('')
   const [selectedProcess, setSelectedProcess] = useState('todos')
+  const [auditMode, setAuditMode] = useState('general')
+  const [processAudit, setProcessAudit] = useState('Mezclas')
   const [collapsedSections, setCollapsedSections] = useState({})
   const [commentDrafts, setCommentDrafts] = useState({})
   const [editingComments, setEditingComments] = useState({})
@@ -2033,6 +2037,28 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
     setLoading(false)
   }
 
+  const loadProcessResponses = async () => {
+    if (!auditId || !processAudit) return
+
+    setProcessLoading(true)
+
+    const { data, error } = await supabase
+      .from('audit_process_responses')
+      .select('*')
+      .eq('audit_id', auditId)
+      .eq('proceso', processAudit)
+
+    if (error) {
+      console.error(error)
+      alert(`Error al cargar evaluación por proceso: ${error.message}`)
+      setProcessLoading(false)
+      return
+    }
+
+    setProcessResponses(data || [])
+    setProcessLoading(false)
+  }
+
   useEffect(() => {
     loadDetail()
 
@@ -2058,8 +2084,80 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
     }
   }, [auditId])
 
+  useEffect(() => {
+    loadProcessResponses()
+
+    const channel = supabase
+      .channel(`audit-process-detail-${auditId}-${processAudit}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'audit_process_responses',
+          filter: `audit_id=eq.${auditId}`,
+        },
+        () => {
+          loadProcessResponses()
+          onRefreshDashboard()
+        },
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [auditId, processAudit])
+
+  const processResponseMap = useMemo(() => {
+    const map = new Map()
+
+    processResponses.forEach((response) => {
+      map.set(response.template_item_id, response)
+    })
+
+    return map
+  }, [processResponses])
+
+  const getProcessResponse = (item) => {
+    return processResponseMap.get(item.template_item_id)
+  }
+
+  const getItemRating = (item) => {
+    if (auditMode === 'proceso') {
+      return getProcessResponse(item)?.calificacion || null
+    }
+
+    return item.calificacion
+  }
+
+  const getItemComment = (item) => {
+    if (auditMode === 'proceso') {
+      return getProcessResponse(item)?.comentarios || ''
+    }
+
+    return item.comentarios || ''
+  }
+
+  const getCommentKey = (item) => {
+    if (auditMode === 'proceso') {
+      return `proceso-${item.template_item_id}-${processAudit}`
+    }
+
+    return `general-${item.response_id}`
+  }
+
+  const getSavingKey = (item) => {
+    if (auditMode === 'proceso') {
+      return `proceso-${item.template_item_id}-${processAudit}`
+    }
+
+    return item.response_id
+  }
+
   const filteredItems = useMemo(() => {
     let currentSectionKey = null
+    const targetProcess = auditMode === 'proceso' ? processAudit : selectedProcess
 
     return items.filter((item) => {
       if (
@@ -2085,26 +2183,30 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
       const itemProcesses = getItemProcesses(item)
 
       const matchesProcess =
-        selectedProcess === 'todos' ||
-        itemProcesses.includes(selectedProcess) ||
+        targetProcess === 'todos' ||
+        itemProcesses.includes(targetProcess) ||
         (Array.isArray(item.procesos_evaluados) &&
-          item.procesos_evaluados.includes(selectedProcess))
+          item.procesos_evaluados.includes(targetProcess))
 
       if (!matchesProcess) return false
+
+      const itemRating = auditMode === 'proceso'
+        ? processResponseMap.get(item.template_item_id)?.calificacion
+        : item.calificacion
 
       const matchesFilter =
         filter === 'todos'
           ? true
-          : (filter === 'pendientes' && !item.calificacion) ||
-          (filter === 'criticos' && item.es_critico) ||
-          (filter === 'rojos' && item.calificacion === '0') ||
-          (filter === 'amarillos' && ['1', '2'].includes(item.calificacion)) ||
-          (filter === 'verdes' && item.calificacion === '3') ||
-          (filter === 'na' && item.calificacion === 'NA')
+          : (filter === 'pendientes' && !itemRating) ||
+            (filter === 'criticos' && item.es_critico) ||
+            (filter === 'rojos' && itemRating === '0') ||
+            (filter === 'amarillos' && ['1', '2'].includes(itemRating)) ||
+            (filter === 'verdes' && itemRating === '3') ||
+            (filter === 'na' && itemRating === 'NA')
 
       return matchesFilter
     })
-  }, [items, filter, search, selectedProcess, collapsedSections])
+  }, [items, filter, search, selectedProcess, processAudit, auditMode, collapsedSections, processResponseMap])
 
   const updateRating = async (responseId, value) => {
     if (!responseId) return
@@ -2117,20 +2219,20 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
       prev.map((row) =>
         row.response_id === responseId
           ? {
-            ...row,
-            calificacion: value,
-            requiere_accion: requiereAccion,
-            color_visual:
-              value === '3'
-                ? 'verde'
-                : value === '2' || value === '1'
-                  ? 'amarillo'
-                  : value === '0'
-                    ? 'rojo'
-                    : value === 'NA'
-                      ? 'gris'
-                      : null,
-          }
+              ...row,
+              calificacion: value,
+              requiere_accion: requiereAccion,
+              color_visual:
+                value === '3'
+                  ? 'verde'
+                  : value === '2' || value === '1'
+                    ? 'amarillo'
+                    : value === '0'
+                      ? 'rojo'
+                      : value === 'NA'
+                        ? 'gris'
+                        : null,
+            }
           : row,
       ),
     )
@@ -2154,6 +2256,59 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
     await onRefreshDashboard()
   }
 
+  const updateProcessRating = async (item, value) => {
+    if (!item?.template_item_id || !processAudit) return
+
+    const savingKey = getSavingKey(item)
+    setSavingId(savingKey)
+
+    const commentKey = getCommentKey(item)
+    const comentarios = commentDrafts[commentKey] ?? getItemComment(item) ?? null
+
+    const { data, error } = await supabase.rpc('save_audit_process_response', {
+      target_audit_id: auditId,
+      target_template_item_id: item.template_item_id,
+      target_proceso: processAudit,
+      target_calificacion: value,
+      target_comentarios: comentarios || null,
+      target_response_id: item.response_id || null,
+    })
+
+    if (error) {
+      console.error(error)
+      alert(`Error al guardar calificación por proceso: ${error.message}`)
+      setSavingId(null)
+      return
+    }
+
+    setProcessResponses((prev) => {
+      const exists = prev.some((row) => row.template_item_id === item.template_item_id)
+      const updatedRow = {
+        id: data,
+        audit_id: auditId,
+        template_item_id: item.template_item_id,
+        response_id: item.response_id || null,
+        proceso: processAudit,
+        calificacion: value,
+        comentarios: comentarios || null,
+        updated_at: new Date().toISOString(),
+      }
+
+      if (exists) {
+        return prev.map((row) =>
+          row.template_item_id === item.template_item_id
+            ? { ...row, ...updatedRow }
+            : row,
+        )
+      }
+
+      return [...prev, updatedRow]
+    })
+
+    setSavingId(null)
+    await onRefreshDashboard()
+  }
+
   const clearRating = async (responseId) => {
     if (!responseId) return
 
@@ -2163,11 +2318,11 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
       prev.map((row) =>
         row.response_id === responseId
           ? {
-            ...row,
-            calificacion: null,
-            requiere_accion: false,
-            color_visual: null,
-          }
+              ...row,
+              calificacion: null,
+              requiere_accion: false,
+              color_visual: null,
+            }
           : row,
       ),
     )
@@ -2186,6 +2341,56 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
       alert(`Error al limpiar calificación: ${error.message}`)
       await loadDetail()
     }
+
+    setSavingId(null)
+    await onRefreshDashboard()
+  }
+
+  const clearProcessRating = async (item) => {
+    if (!item?.template_item_id || !processAudit) return
+
+    const savingKey = getSavingKey(item)
+    setSavingId(savingKey)
+
+    const { data, error } = await supabase.rpc('save_audit_process_response', {
+      target_audit_id: auditId,
+      target_template_item_id: item.template_item_id,
+      target_proceso: processAudit,
+      target_calificacion: null,
+      target_comentarios: null,
+      target_response_id: item.response_id || null,
+    })
+
+    if (error) {
+      console.error(error)
+      alert(`Error al limpiar calificación por proceso: ${error.message}`)
+      setSavingId(null)
+      return
+    }
+
+    setProcessResponses((prev) => {
+      const exists = prev.some((row) => row.template_item_id === item.template_item_id)
+      const updatedRow = {
+        id: data,
+        audit_id: auditId,
+        template_item_id: item.template_item_id,
+        response_id: item.response_id || null,
+        proceso: processAudit,
+        calificacion: null,
+        comentarios: getProcessResponse(item)?.comentarios || null,
+        updated_at: new Date().toISOString(),
+      }
+
+      if (exists) {
+        return prev.map((row) =>
+          row.template_item_id === item.template_item_id
+            ? { ...row, ...updatedRow }
+            : row,
+        )
+      }
+
+      return [...prev, updatedRow]
+    })
 
     setSavingId(null)
     await onRefreshDashboard()
@@ -2216,12 +2421,59 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
 
     setEditingComments((prev) => ({
       ...prev,
-      [responseId]: false,
+      [`general-${responseId}`]: false,
+    }))
+  }
+
+  const updateProcessComments = async (item, comentarios) => {
+    if (!item?.template_item_id || !processAudit) return
+
+    const { data, error } = await supabase.rpc('save_audit_process_comment', {
+      target_audit_id: auditId,
+      target_template_item_id: item.template_item_id,
+      target_proceso: processAudit,
+      target_comentarios: comentarios,
+      target_response_id: item.response_id || null,
+    })
+
+    if (error) {
+      console.error(error)
+      alert(`Error al guardar comentario por proceso: ${error.message}`)
+      return
+    }
+
+    setProcessResponses((prev) => {
+      const exists = prev.some((row) => row.template_item_id === item.template_item_id)
+      const updatedRow = {
+        id: data,
+        audit_id: auditId,
+        template_item_id: item.template_item_id,
+        response_id: item.response_id || null,
+        proceso: processAudit,
+        calificacion: getProcessResponse(item)?.calificacion || null,
+        comentarios,
+        updated_at: new Date().toISOString(),
+      }
+
+      if (exists) {
+        return prev.map((row) =>
+          row.template_item_id === item.template_item_id
+            ? { ...row, ...updatedRow }
+            : row,
+        )
+      }
+
+      return [...prev, updatedRow]
+    })
+
+    setEditingComments((prev) => ({
+      ...prev,
+      [getCommentKey(item)]: false,
     }))
   }
 
   const toggleProceso = async (item, proceso) => {
-    if (!item.response_id) return
+    if (!item.response_id || auditMode === 'proceso') return
 
     const actuales = Array.isArray(item.procesos_evaluados)
       ? item.procesos_evaluados
@@ -2278,18 +2530,58 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
               Auditoría FCCA
             </h2>
             <p className="text-slate-500 font-semibold">
-              Califica cada punto con 0, 1, 2, 3 o NA.
+              {auditMode === 'general'
+                ? 'Vista general del checklist maestro. El filtro por proceso funciona como navegación.'
+                : `Evaluación específica del proceso: ${processAudit}. Los hallazgos futuros quedarán ligados al proceso.`}
             </p>
           </div>
 
           <button
             type="button"
-            onClick={loadDetail}
+            onClick={() => {
+              loadDetail()
+              loadProcessResponses()
+            }}
             className="rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 px-5 py-3 font-black flex items-center justify-center gap-2"
           >
             <RefreshCw className="w-5 h-5" />
             Actualizar
           </button>
+        </div>
+
+        <div className="flex flex-col lg:flex-row gap-3 mt-5">
+          <div className="inline-flex rounded-2xl bg-slate-100 p-1 border border-slate-200 w-fit">
+            <button
+              type="button"
+              onClick={() => setAuditMode('general')}
+              className={`rounded-xl px-4 py-2 text-sm font-black transition-all ${
+                auditMode === 'general'
+                  ? 'bg-slate-950 text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-white'
+              }`}
+            >
+              General
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setAuditMode('proceso')}
+              className={`rounded-xl px-4 py-2 text-sm font-black transition-all ${
+                auditMode === 'proceso'
+                  ? 'bg-cyan-700 text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-white'
+              }`}
+            >
+              Por proceso
+            </button>
+          </div>
+
+          {auditMode === 'proceso' && (
+            <div className="rounded-2xl bg-cyan-50 border border-cyan-100 px-4 py-2 text-cyan-800 font-bold text-sm flex items-center">
+              Evaluación independiente por área: {processAudit}
+              {processLoading ? ' · cargando...' : ''}
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px_260px] gap-4 mt-5">
@@ -2300,18 +2592,32 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
             className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100 focus:border-cyan-400"
           />
 
-          <select
-            value={selectedProcess}
-            onChange={(event) => setSelectedProcess(event.target.value)}
-            className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100 focus:border-cyan-400 font-bold"
-          >
-            <option value="todos">Todos los procesos</option>
-            {procesosBase.map((proceso) => (
-              <option key={proceso} value={proceso}>
-                {proceso}
-              </option>
-            ))}
-          </select>
+          {auditMode === 'general' ? (
+            <select
+              value={selectedProcess}
+              onChange={(event) => setSelectedProcess(event.target.value)}
+              className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100 focus:border-cyan-400 font-bold"
+            >
+              <option value="todos">Todos los procesos</option>
+              {procesosBase.map((proceso) => (
+                <option key={proceso} value={proceso}>
+                  {proceso}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <select
+              value={processAudit}
+              onChange={(event) => setProcessAudit(event.target.value)}
+              className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100 focus:border-cyan-400 font-black text-cyan-900"
+            >
+              {procesosBase.map((proceso) => (
+                <option key={proceso} value={proceso}>
+                  {proceso}
+                </option>
+              ))}
+            </select>
+          )}
 
           <select
             value={filter}
@@ -2391,15 +2697,19 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
             )
           }
 
-          const rating = getRatingConfig(item.calificacion)
-
+          const currentRating = getItemRating(item)
+          const rating = getRatingConfig(currentRating)
           const procesos = Array.isArray(item.procesos_evaluados)
             ? item.procesos_evaluados
             : []
+          const itemProcesses = getItemProcesses(item)
+          const commentKey = getCommentKey(item)
+          const savingKey = getSavingKey(item)
+          const currentComment = getItemComment(item)
 
           return (
             <motion.div
-              key={item.response_id || item.template_item_id}
+              key={auditMode === 'proceso' ? `${item.template_item_id}-${processAudit}` : item.response_id || item.template_item_id}
               initial={false}
               animate={{ opacity: 1, y: 0 }}
               className={`bg-white rounded-[30px] p-5 md:p-6 border shadow-[0_14px_40px_rgba(15,23,42,0.08)] ${
@@ -2412,6 +2722,12 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
                     <span className="rounded-full bg-slate-950 text-white px-3 py-1 text-xs font-black">
                       Punto {item.codigo_punto || item.orden}
                     </span>
+
+                    {auditMode === 'proceso' && (
+                      <span className="rounded-full bg-cyan-100 text-cyan-800 px-3 py-1 text-xs font-black border border-cyan-200">
+                        Evaluando: {processAudit}
+                      </span>
+                    )}
 
                     {item.es_critico && (
                       <span className="rounded-full bg-red-100 text-red-700 px-3 py-1 text-xs font-black flex items-center gap-1">
@@ -2450,22 +2766,28 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
 
                   <div className="mt-5">
                     <div className="text-xs uppercase tracking-widest font-black text-slate-400 mb-2">
-                      Procesos evaluados
+                      {auditMode === 'proceso' ? 'Procesos aplicables' : 'Procesos evaluados'}
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
                       {procesosBase.map((proceso) => {
-                        const active = procesos.includes(proceso)
+                        const active = auditMode === 'proceso'
+                          ? proceso === processAudit && itemProcesses.includes(proceso)
+                          : procesos.includes(proceso)
+                        const applicable = itemProcesses.includes(proceso)
 
                         return (
                           <button
                             key={proceso}
                             type="button"
+                            disabled={auditMode === 'proceso'}
                             onClick={() => toggleProceso(item, proceso)}
                             className={`min-h-[40px] rounded-2xl px-3 py-2 text-[11px] font-black border transition-all text-center leading-tight flex items-center justify-center ${
                               active
                                 ? 'bg-cyan-600 text-white border-cyan-600 shadow-sm'
-                                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-cyan-50'
+                                : applicable
+                                  ? 'bg-cyan-50 text-cyan-700 border-cyan-100'
+                                  : 'bg-slate-50 text-slate-400 border-slate-200'
                             }`}
                           >
                             {proceso}
@@ -2477,19 +2799,28 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
 
                   <div className="mt-5">
                     <div className="flex items-center justify-between gap-3 mb-2">
-                      <div className="text-xs uppercase tracking-widest font-black text-slate-400">
-                        Observaciones / evidencia textual
+                      <div>
+                        <div className="text-xs uppercase tracking-widest font-black text-slate-400">
+                          Observaciones / evidencia textual
+                        </div>
+                        {auditMode === 'proceso' && (
+                          <div className="text-xs font-bold text-cyan-700 mt-1">
+                            Este comentario pertenece solo a {processAudit}.
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() =>
-                            updateComments(
-                              item.response_id,
-                              commentDrafts[item.response_id] ?? item.comentarios ?? '',
-                            )
-                          }
+                          onClick={() => {
+                            const value = commentDrafts[commentKey] ?? currentComment ?? ''
+                            if (auditMode === 'proceso') {
+                              updateProcessComments(item, value)
+                            } else {
+                              updateComments(item.response_id, value)
+                            }
+                          }}
                           className="w-9 h-9 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-100 flex items-center justify-center"
                           title="Guardar comentario"
                         >
@@ -2501,7 +2832,7 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
                           onClick={() =>
                             setEditingComments((prev) => ({
                               ...prev,
-                              [item.response_id]: true,
+                              [commentKey]: true,
                             }))
                           }
                           className="w-9 h-9 rounded-xl bg-slate-50 hover:bg-cyan-50 text-slate-600 border border-slate-200 flex items-center justify-center"
@@ -2513,21 +2844,20 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
                     </div>
 
                     <textarea
-                      value={commentDrafts[item.response_id] ?? item.comentarios ?? ''}
+                      value={commentDrafts[commentKey] ?? currentComment ?? ''}
                       onChange={(event) =>
                         setCommentDrafts((prev) => ({
                           ...prev,
-                          [item.response_id]: event.target.value,
+                          [commentKey]: event.target.value,
                         }))
                       }
                       disabled={
-                        Boolean(item.comentarios) &&
-                        editingComments[item.response_id] !== true
+                        Boolean(currentComment) &&
+                        editingComments[commentKey] !== true
                       }
                       placeholder="Comentarios u observaciones del auditor..."
                       className={`w-full rounded-2xl border px-4 py-3 min-h-[90px] outline-none focus:ring-4 focus:ring-cyan-100 focus:border-cyan-400 ${
-                        Boolean(item.comentarios) &&
-                        editingComments[item.response_id] !== true
+                        Boolean(currentComment) && editingComments[commentKey] !== true
                           ? 'bg-slate-100 text-slate-500 border-slate-200'
                           : 'bg-slate-50 border-slate-200'
                       }`}
@@ -2537,7 +2867,9 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
 
                 <div className="2xl:w-72">
                   <div className="text-xs uppercase tracking-widest font-black text-slate-400 mb-3">
-                    Calificación FCCA
+                    {auditMode === 'proceso'
+                      ? `Calificación · ${processAudit}`
+                      : 'Calificación FCCA'}
                   </div>
 
                   <div className="grid grid-cols-5 2xl:grid-cols-1 gap-2">
@@ -2545,10 +2877,16 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
                       <button
                         key={option.value}
                         type="button"
-                        disabled={savingId === item.response_id}
-                        onClick={() => updateRating(item.response_id, option.value)}
+                        disabled={savingId === savingKey}
+                        onClick={() => {
+                          if (auditMode === 'proceso') {
+                            updateProcessRating(item, option.value)
+                          } else {
+                            updateRating(item.response_id, option.value)
+                          }
+                        }}
                         className={`rounded-2xl px-4 py-3 font-black border transition-all flex items-center justify-center 2xl:justify-between gap-2 ${
-                          item.calificacion === option.value
+                          currentRating === option.value
                             ? `${option.color} text-white border-transparent shadow-lg`
                             : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
                         }`}
@@ -2563,10 +2901,16 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
 
                   <button
                     type="button"
-                    disabled={savingId === item.response_id || !item.calificacion}
-                    onClick={() => clearRating(item.response_id)}
+                    disabled={savingId === savingKey || !currentRating}
+                    onClick={() => {
+                      if (auditMode === 'proceso') {
+                        clearProcessRating(item)
+                      } else {
+                        clearRating(item.response_id)
+                      }
+                    }}
                     className={`mt-3 w-full rounded-2xl px-4 py-3 font-black border transition-all ${
-                      item.calificacion
+                      currentRating
                         ? 'bg-white hover:bg-red-50 text-red-600 border-red-200'
                         : 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'
                     }`}
@@ -2574,7 +2918,7 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
                     Limpiar calificación
                   </button>
 
-                  {savingId === item.response_id && (
+                  {savingId === savingKey && (
                     <div className="text-xs text-slate-500 font-bold mt-3">
                       Guardando...
                     </div>
@@ -2689,16 +3033,6 @@ export default function App() {
     setProfile(null)
   }
 
-  const handleOpenAudit = (auditId) => {
-    if (!auditId) {
-      alert('No se encontró el ID de la auditoría.')
-      return
-    }
-
-    setSelectedAuditId(auditId)
-    setActiveView('fcca')
-  }
-
   const currentMenuLabel = menuItems.find((item) => item.id === activeView)?.label || 'Dashboard'
 
   if (!session) {
@@ -2766,7 +3100,7 @@ export default function App() {
             <Dashboard
               dashboard={dashboard}
               loading={loadingDashboard}
-              onOpenAudit={handleOpenAudit}
+              onOpenAudit={setSelectedAuditId}
             />
           ) : activeView === 'hallazgos' ? (
             <FindingsView />
@@ -2780,3 +3114,4 @@ export default function App() {
     </div>
   )
 }
+
