@@ -1342,23 +1342,24 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
         return
       }
 
-      if (active) {
-        setDetailRows(data || [])
+      const { data: processDataResult, error: processError } = await supabase
+        .from('v_fcca_process_dashboard')
+        .select('*')
+        .eq('audit_id', first.audit_id)
+        .order('score_proceso', { ascending: false })
 
-        const { data: processDataResult, error: processError } = await supabase
-          .from('v_fcca_process_dashboard')
-          .select('*')
-          .eq('audit_id', first.audit_id)
+      if (!active) return
 
-        if (processError) {
-          console.warn('Dashboard por proceso no disponible todavía:', processError.message)
-          setProcessDashboardRows([])
-        } else {
-          setProcessDashboardRows(processDataResult || [])
-        }
+      setDetailRows(data || [])
 
-        setDetailLoading(false)
+      if (processError) {
+        console.warn('Dashboard por proceso no disponible todavía:', processError.message)
+        setProcessDashboardRows([])
+      } else {
+        setProcessDashboardRows(processDataResult || [])
       }
+
+      setDetailLoading(false)
     }
 
     loadDashboardDetail()
@@ -1489,17 +1490,64 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
     .filter((item) => item.puntos > 0)
     .sort((a, b) => b.cumplimiento - a.cumplimiento)
 
-  const processData = processDashboardRows.length > 0
-    ? processDashboardRows
-        .map((row) => ({
-          name: row.proceso,
-          cumplimiento: Number(row.score_proceso || 0),
-          puntos: Number(row.total_respuestas_proceso || 0),
-          evaluados: Number(row.puntos_evaluados || 0),
-        }))
-        .filter((item) => item.puntos > 0)
-        .sort((a, b) => b.cumplimiento - a.cumplimiento)
-    : fallbackProcessData
+  const processRealData = processDashboardRows
+    .map((row) => ({
+      name: row.proceso,
+      cumplimiento: Number(row.score_proceso || 0),
+      puntos: Number(row.total_respuestas_proceso || 0),
+      evaluados: Number(row.puntos_evaluados || 0),
+      pendientes: Number(row.puntos_pendientes || 0),
+      verdes: Number(row.puntos_verdes || 0),
+      amarillos: Number(row.puntos_amarillos || 0),
+      rojos: Number(row.puntos_rojos || 0),
+      na: Number(row.puntos_na || 0),
+    }))
+    .filter((item) => item.puntos > 0)
+    .sort((a, b) => b.cumplimiento - a.cumplimiento)
+
+  const hasRealProcessData = processRealData.length > 0
+
+  const processData = hasRealProcessData ? processRealData : fallbackProcessData
+
+  const processTotals = processRealData.reduce(
+    (acc, item) => ({
+      procesos: acc.procesos + 1,
+      puntos: acc.puntos + item.puntos,
+      evaluados: acc.evaluados + item.evaluados,
+      pendientes: acc.pendientes + item.pendientes,
+      rojos: acc.rojos + item.rojos,
+      amarillos: acc.amarillos + item.amarillos,
+      verdes: acc.verdes + item.verdes,
+    }),
+    {
+      procesos: 0,
+      puntos: 0,
+      evaluados: 0,
+      pendientes: 0,
+      rojos: 0,
+      amarillos: 0,
+      verdes: 0,
+    },
+  )
+
+  const processAdvance = processTotals.puntos > 0
+    ? Math.round((processTotals.evaluados / processTotals.puntos) * 100)
+    : 0
+
+  const processScoreAverage = processRealData.length > 0
+    ? Math.round(
+        processRealData.reduce((acc, item) => acc + item.cumplimiento, 0) /
+          processRealData.length,
+      )
+    : 0
+
+  const processStatusData = processRealData.map((item) => ({
+    name: item.name,
+    Verde: item.verdes,
+    Amarillo: item.amarillos,
+    Rojo: item.rojos,
+    Pendiente: item.pendientes,
+  }))
 
   const criticalRows = detailRows.filter(
     (row) => row.tipo_item === 'pregunta' && row.es_critico,
@@ -1738,6 +1786,133 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
         </motion.div>
       </div>
 
+      {/* RESULTADOS REALES POR PROCESO */}
+      <motion.div
+        initial={false}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-white rounded-[30px] p-5 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white"
+      >
+        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-4">
+          <div>
+            <h2 className="text-xl font-black text-slate-950">
+              Resultados reales por proceso
+            </h2>
+            <p className="text-slate-500 font-semibold text-sm">
+              Basado en evaluaciones guardadas en la vista Por proceso.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 min-w-0 lg:min-w-[520px]">
+            <div className="rounded-2xl bg-cyan-50 border border-cyan-100 p-3 text-center">
+              <div className="text-xl font-black text-cyan-700">
+                {processTotals.procesos}
+              </div>
+              <div className="text-[10px] uppercase tracking-widest font-black text-cyan-700">
+                Procesos
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 border border-slate-100 p-3 text-center">
+              <div className="text-xl font-black text-slate-950">
+                {processAdvance}%
+              </div>
+              <div className="text-[10px] uppercase tracking-widest font-black text-slate-500">
+                Avance
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-3 text-center">
+              <div className="text-xl font-black text-emerald-700">
+                {processScoreAverage}%
+              </div>
+              <div className="text-[10px] uppercase tracking-widest font-black text-emerald-700">
+                Score prom.
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-red-50 border border-red-100 p-3 text-center">
+              <div className="text-xl font-black text-red-700">
+                {processTotals.rojos}
+              </div>
+              <div className="text-[10px] uppercase tracking-widest font-black text-red-700">
+                No cumple
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {hasRealProcessData ? (
+          <div className="grid grid-cols-1 2xl:grid-cols-[1fr_1fr] gap-5">
+            <div className="grid gap-2">
+              {processRealData.slice(0, 8).map((item) => (
+                <div
+                  key={item.name}
+                  className="rounded-2xl bg-slate-50 border border-slate-100 p-3"
+                >
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <div className="min-w-0">
+                      <div className="font-black text-slate-950 truncate">
+                        {item.name}
+                      </div>
+                      <div className="text-[11px] text-slate-500 font-bold">
+                        {item.evaluados}/{item.puntos} evaluados · {item.pendientes} pendientes
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <div className="text-2xl font-black text-slate-950">
+                        {item.cumplimiento}%
+                      </div>
+                      <div className="text-[11px] font-black text-red-600">
+                        Rojos {item.rojos}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="h-2 rounded-full bg-white overflow-hidden border border-slate-100">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-blue-600"
+                      style={{
+                        width: `${item.puntos > 0 ? Math.round((item.evaluados / item.puntos) * 100) : 0}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={processStatusData}
+                  layout="vertical"
+                  margin={{ top: 10, right: 20, left: 80, bottom: 10 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" tick={{ fontSize: 11, fontWeight: 700 }} />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    width={120}
+                    tick={{ fontSize: 11, fontWeight: 700 }}
+                  />
+                  <Tooltip />
+                  <Legend wrapperStyle={{ fontSize: 11, fontWeight: 700 }} />
+                  <Bar dataKey="Verde" stackId="a" fill={chartPalette.green} barSize={24} />
+                  <Bar dataKey="Amarillo" stackId="a" fill={chartPalette.amber} barSize={24} />
+                  <Bar dataKey="Rojo" stackId="a" fill={chartPalette.red} barSize={24} />
+                  <Bar dataKey="Pendiente" stackId="a" fill="#020617" barSize={24} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-3xl bg-slate-50 border border-slate-100 p-5 text-slate-500 font-bold">
+            Aún no hay evaluaciones guardadas en la vista Por proceso. Cuando evalúes Mezclas, Almacén MP u otro proceso, este panel mostrará resultados reales por área.
+          </div>
+        )}
+      </motion.div>
+
       {/* FILA SECCIONES Y CRITICOS */}
       <div className="grid grid-cols-1 2xl:grid-cols-[1.15fr_0.85fr] gap-5">
         <motion.div
@@ -1921,11 +2096,13 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
             className="bg-white rounded-[30px] p-5 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white"
           >
             <h2 className="text-xl font-black text-slate-950 mb-1">
-              Cumplimiento por proceso
+              {hasRealProcessData ? 'Score por proceso auditado' : 'Cumplimiento por proceso'}
             </h2>
 
             <p className="text-slate-500 font-semibold text-sm mb-3">
-              Calculado con base en los procesos seleccionados en la auditoría.
+              {hasRealProcessData
+                ? 'Calculado con evaluaciones reales de la vista Por proceso.'
+                : 'Calculado con base en los procesos seleccionados en la auditoría.'}
             </p>
 
             <div className="h-[300px]">
