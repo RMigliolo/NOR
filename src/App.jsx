@@ -552,6 +552,171 @@ function FindingsView() {
     return 'bg-slate-100 text-slate-700 border-slate-200'
   }
 
+
+  const reopenFindingAndEnsureAction = async (finding) => {
+    if (!finding?.finding_id) return
+
+    const motivo = window.prompt(
+      'Motivo para reabrir este hallazgo y asegurar su acción correctiva:',
+      'Reapertura por corrección de cierre automático previo.',
+    )
+
+    if (motivo === null) return
+
+    if (motivo.trim().length < 5) {
+      alert('El motivo debe tener al menos 5 caracteres.')
+      return
+    }
+
+    const today = new Date()
+    const dueDate = new Date(today)
+    dueDate.setDate(today.getDate() + 90)
+
+    const reopenFindingPayload = {
+      estado: 'abierto',
+      updated_at: new Date().toISOString(),
+    }
+
+    const { error: findingError } = await supabase
+      .from('findings')
+      .update(reopenFindingPayload)
+      .eq('id', finding.finding_id)
+
+    if (findingError) {
+      console.error(findingError)
+      alert(`No se pudo reabrir el hallazgo: ${findingError.message}`)
+      return
+    }
+
+    const { data: existingActions, error: actionSearchError } = await supabase
+      .from('actions')
+      .select('*')
+      .eq('finding_id', finding.finding_id)
+      .limit(1)
+
+    if (actionSearchError) {
+      console.warn('No se pudo buscar acción ligada al hallazgo:', actionSearchError.message)
+    }
+
+    const existingAction = existingActions?.[0]
+    const baseComment = `Reapertura desde Hallazgos: ${motivo.trim()}`
+
+    if (existingAction?.id) {
+      const currentComment = String(existingAction.comentarios || '').trim()
+      const nextComment = currentComment
+        ? `${currentComment}\n${baseComment}`
+        : baseComment
+
+      const updateAttempts = [
+        {
+          estado: 'en_proceso',
+          fecha_cierre: null,
+          estado_validacion: 'pendiente_validacion',
+          comentarios: nextComment,
+          updated_at: new Date().toISOString(),
+        },
+        {
+          estado: 'en_proceso',
+          fecha_cierre: null,
+          comentarios: nextComment,
+          updated_at: new Date().toISOString(),
+        },
+        {
+          estado: 'en_proceso',
+          updated_at: new Date().toISOString(),
+        },
+      ]
+
+      let reopened = false
+      let lastError = null
+
+      for (const payload of updateAttempts) {
+        const { error } = await supabase
+          .from('actions')
+          .update(payload)
+          .eq('id', existingAction.id)
+
+        if (!error) {
+          reopened = true
+          break
+        }
+
+        lastError = error
+        if (!String(error.message || '').toLowerCase().includes('column')) break
+      }
+
+      if (!reopened) {
+        alert(`El hallazgo se reabrió, pero no se pudo reabrir la acción: ${lastError?.message || 'error desconocido'}`)
+      } else {
+        alert('Hallazgo y acción correctiva reabiertos correctamente.')
+      }
+
+      await loadFindings()
+      return
+    }
+
+    const actionTitle = `Acción correctiva - ${finding.proceso || 'Proceso'} - Punto ${finding.codigo_punto || 'S/C'}`
+    const actionDescription = finding.descripcion || `Acción correctiva generada desde hallazgo FCCA ${finding.codigo_punto || ''}`
+    const priority = finding.criticidad === 'critica' ? 'alta' : 'media'
+
+    const basePayload = {
+      company_id: finding.company_id || null,
+      audit_id: finding.audit_id || null,
+      response_id: finding.response_id || null,
+      finding_id: finding.finding_id,
+      template_item_id: finding.template_item_id || null,
+      proceso: finding.proceso || null,
+      titulo: actionTitle,
+      descripcion: actionDescription,
+      tipo: 'correctiva',
+      estado: 'pendiente',
+      prioridad: priority,
+      fecha_inicio: today.toISOString().slice(0, 10),
+      fecha_compromiso: dueDate.toISOString().slice(0, 10),
+      comentarios: baseComment,
+      origen: 'reapertura_hallazgo',
+      automatico: true,
+      updated_at: new Date().toISOString(),
+    }
+
+    const insertAttempts = [
+      basePayload,
+      { ...basePayload, proceso: undefined, origen: undefined },
+      { ...basePayload, proceso: undefined, origen: undefined, automatico: undefined },
+      { ...basePayload, proceso: undefined, origen: undefined, automatico: undefined, template_item_id: undefined },
+    ]
+
+    let created = false
+    let lastInsertError = null
+
+    for (const attempt of insertAttempts) {
+      const cleanPayload = Object.fromEntries(
+        Object.entries(attempt).filter(([, val]) => val !== undefined),
+      )
+
+      const { error } = await supabase
+        .from('actions')
+        .insert(cleanPayload)
+
+      if (!error) {
+        created = true
+        break
+      }
+
+      lastInsertError = error
+      const message = String(error.message || '').toLowerCase()
+      if (!message.includes('column') && !message.includes('schema')) break
+    }
+
+    if (!created) {
+      alert(`El hallazgo se reabrió, pero no se pudo crear la acción: ${lastInsertError?.message || 'error desconocido'}`)
+    } else {
+      alert('Hallazgo reabierto y acción correctiva creada correctamente.')
+    }
+
+    await loadFindings()
+  }
+
   if (loading) {
     return (
       <div className="bg-white rounded-[34px] p-8 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white">
@@ -712,6 +877,18 @@ function FindingsView() {
                         ? new Date(finding.created_at).toLocaleDateString('es-MX')
                         : 'N/A'}
                     </div>
+
+
+                    {finding.estado === 'cerrado' && (
+                      <button
+                        type="button"
+                        onClick={() => reopenFindingAndEnsureAction(finding)}
+                        className="mt-4 w-full rounded-2xl bg-slate-950 hover:bg-cyan-700 text-white px-4 py-3 font-black flex items-center justify-center gap-2"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                        Reabrir hallazgo
+                      </button>
+                    )}
                   </div>
                 </div>
               </motion.div>
@@ -723,23 +900,14 @@ function FindingsView() {
   )
 }
 
-function ActionsView({ profile }) {
+function ActionsView() {
   const [actions, setActions] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('activas')
   const [attachments, setAttachments] = useState([])
   const [uploadingId, setUploadingId] = useState(null)
   const [commentDrafts, setCommentDrafts] = useState({})
-
-  const userRoleText = String(profile?.puesto || profile?.rol || profile?.role || '').toLowerCase()
-  const canReopenActions =
-    !userRoleText ||
-    userRoleText.includes('admin') ||
-    userRoleText.includes('sgi') ||
-    userRoleText.includes('calidad') ||
-    userRoleText.includes('auditor') ||
-    userRoleText.includes('gerente') ||
-    userRoleText.includes('coordinador')
+  const [reopeningId, setReopeningId] = useState(null)
 
   const normalizeAction = (action) => {
     const textoBase = `${action.descripcion || ''} ${action.titulo || ''}`
@@ -1085,55 +1253,51 @@ function ActionsView({ profile }) {
     await loadActions()
   }
 
+
   const reopenAction = async (action) => {
-    if (!canReopenActions) {
-      alert('Tu perfil no tiene autorización para reabrir acciones correctivas.')
-      return
-    }
+    if (!action?.action_id) return
 
     const motivo = window.prompt(
-      'Motivo de reapertura de la acción correctiva:',
-      'Reapertura autorizada para corrección o seguimiento adicional.',
+      'Motivo para reabrir la acción correctiva:',
+      'Reapertura por corrección o seguimiento adicional.',
     )
 
     if (motivo === null) return
 
-    const { data: userData } = await supabase.auth.getUser()
-    const fecha = new Date().toISOString()
-    const comentarioAnterior = String(action.comentarios || '').trim()
-    const comentarioReapertura = `[${new Date().toLocaleString('es-MX')}] Reapertura por ${profile?.nombre || userData?.user?.email || 'usuario autorizado'}: ${motivo}`
-
-    const payloadBase = {
-      estado: 'en_proceso',
-      fecha_cierre: null,
-      comentarios: comentarioAnterior
-        ? `${comentarioAnterior}\n\n${comentarioReapertura}`
-        : comentarioReapertura,
-      updated_at: fecha,
+    if (motivo.trim().length < 5) {
+      alert('El motivo debe tener al menos 5 caracteres.')
+      return
     }
+
+    setReopeningId(action.action_id)
+
+    const currentComment = String(action.comentarios || '').trim()
+    const reopenComment = `Reapertura de acción: ${motivo.trim()}`
+    const nextComment = currentComment
+      ? `${currentComment}\n${reopenComment}`
+      : reopenComment
 
     const attempts = [
       {
-        ...payloadBase,
+        estado: 'en_proceso',
+        fecha_cierre: null,
         estado_validacion: 'pendiente_validacion',
-        comentario_validacion: motivo,
-        fecha_validacion: null,
-        validado_por: null,
+        comentarios: nextComment,
+        updated_at: new Date().toISOString(),
       },
       {
-        ...payloadBase,
-        estado_validacion: 'pendiente_validacion',
-        comentario_validacion: motivo,
-        fecha_validacion: null,
+        estado: 'en_proceso',
+        fecha_cierre: null,
+        comentarios: nextComment,
+        updated_at: new Date().toISOString(),
       },
       {
-        ...payloadBase,
-        estado_validacion: 'pendiente_validacion',
-        comentario_validacion: motivo,
+        estado: 'en_proceso',
+        updated_at: new Date().toISOString(),
       },
-      payloadBase,
     ]
 
+    let success = false
     let lastError = null
 
     for (const payload of attempts) {
@@ -1143,9 +1307,8 @@ function ActionsView({ profile }) {
         .eq('id', action.action_id)
 
       if (!error) {
-        await loadActions()
-        alert('Acción reabierta correctamente.')
-        return
+        success = true
+        break
       }
 
       lastError = error
@@ -1153,8 +1316,16 @@ function ActionsView({ profile }) {
       if (!message.includes('column') && !message.includes('schema')) break
     }
 
-    console.error(lastError)
-    alert(`No se pudo reabrir la acción: ${lastError?.message || 'Error desconocido'}`)
+    setReopeningId(null)
+
+    if (!success) {
+      console.error(lastError)
+      alert(`No se pudo reabrir la acción: ${lastError?.message || 'error desconocido'}`)
+      return
+    }
+
+    alert('Acción correctiva reabierta correctamente.')
+    await loadActions()
   }
 
   if (loading) {
@@ -1414,13 +1585,16 @@ function ActionsView({ profile }) {
                         <option value="cerrada">Cerrada</option>
                       </select>
 
-                      {action.estado === 'cerrada' && canReopenActions && (
+
+                      {action.estado === 'cerrada' && (
                         <button
                           type="button"
                           onClick={() => reopenAction(action)}
-                          className="mt-4 w-full rounded-2xl bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-3 font-black"
+                          disabled={reopeningId === action.action_id}
+                          className="mt-4 w-full rounded-2xl bg-slate-950 hover:bg-cyan-700 text-white px-4 py-3 font-black disabled:opacity-60 flex items-center justify-center gap-2"
                         >
-                          Reabrir acción
+                          <RefreshCw className="w-4 h-4" />
+                          {reopeningId === action.action_id ? 'Reabriendo...' : 'Reabrir acción'}
                         </button>
                       )}
 
@@ -2929,28 +3103,20 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
       return { data: null, error: { message: 'No se pudo insertar acción.' } }
     }
 
-    const updateActionSafely = async (existingAction) => {
-      if (!existingAction?.id) return
-
-      const isAlreadyClosed = existingAction.estado === 'cerrada'
+    const updateActionSafely = async (actionId) => {
       const payload = {
         titulo: actionTitle,
         descripcion: actionDescription,
         prioridad: item.es_critico || value === '0' ? 'alta' : 'media',
+        estado: 'pendiente',
+        fecha_cierre: null,
         updated_at: new Date().toISOString(),
-      }
-
-      // Regla de trazabilidad: una acción cerrada o validada no se reabre automáticamente desde el checklist.
-      // La reapertura debe hacerse desde el módulo de Acciones correctivas por un usuario autorizado.
-      if (!isAlreadyClosed) {
-        payload.estado = existingAction.estado || 'pendiente'
-        payload.fecha_cierre = existingAction.fecha_cierre || null
       }
 
       const { error } = await supabase
         .from('actions')
         .update(payload)
-        .eq('id', existingAction.id)
+        .eq('id', actionId)
 
       if (error) {
         console.warn('No se pudo actualizar acción por proceso:', error.message)
@@ -2976,9 +3142,8 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
         const hasFiles = Array.isArray(actionFiles) && actionFiles.length > 0
         const hasComment = Boolean(String(existingAction.comentarios || '').trim())
         const isAutomaticProcessAction = existingAction.automatico !== false
-        const hasOperationalProgress = !['pendiente', null, undefined, ''].includes(existingAction.estado)
 
-        if (!hasFiles && !hasComment && !hasOperationalProgress && isAutomaticProcessAction) {
+        if (!hasFiles && !hasComment && isAutomaticProcessAction) {
           const { error: deleteActionError } = await supabase
             .from('actions')
             .delete()
@@ -3083,7 +3248,7 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
       const existingAction = await findExistingProcessAction(findingRecord.id)
 
       if (existingAction?.id) {
-        await updateActionSafely(existingAction)
+        await updateActionSafely(existingAction.id)
       } else {
         const { error } = await insertActionSafely(findingRecord.id)
 
@@ -3949,7 +4114,7 @@ export default function App() {
           ) : activeView === 'hallazgos' ? (
             <FindingsView />
           ) : activeView === 'acciones' ? (
-            <ActionsView profile={profile} />
+            <ActionsView />
           ) : (
             <ComingSoon title={currentMenuLabel} />
           )}
