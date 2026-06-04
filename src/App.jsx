@@ -1920,18 +1920,29 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
     .sort((a, b) => b.cumplimiento - a.cumplimiento)
 
   const processRealData = processDashboardRows
-    .map((row) => ({
-      name: row.proceso,
-      cumplimiento: Number(row.score_proceso || 0),
-      puntos: Number(row.total_respuestas_proceso || 0),
-      evaluados: Number(row.puntos_evaluados || 0),
-      pendientes: Number(row.puntos_pendientes || 0),
-      verdes: Number(row.puntos_verdes || 0),
-      amarillos: Number(row.puntos_amarillos || 0),
-      rojos: Number(row.puntos_rojos || 0),
-      na: Number(row.puntos_na || 0),
-    }))
-    .filter((item) => item.puntos > 0)
+    .map((row) => {
+      const verdes = Number(row.puntos_verdes || 0)
+      const amarillos = Number(row.puntos_amarillos || 0)
+      const rojos = Number(row.puntos_rojos || 0)
+      const na = Number(row.puntos_na || 0)
+      const evaluadosReales = verdes + amarillos + rojos + na
+
+      return {
+        name: row.proceso,
+        cumplimiento: Number(row.score_proceso || 0),
+        // Solo se consideran registros con calificación real.
+        // Los registros limpiados o creados sin calificación permanecen en Supabase,
+        // pero no deben aparecer como pendientes en el dashboard por proceso.
+        puntos: evaluadosReales,
+        evaluados: evaluadosReales,
+        pendientes: 0,
+        verdes,
+        amarillos,
+        rojos,
+        na,
+      }
+    })
+    .filter((item) => item.evaluados > 0)
     .sort((a, b) => b.cumplimiento - a.cumplimiento)
 
   const hasRealProcessData = processRealData.length > 0
