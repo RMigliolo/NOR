@@ -410,22 +410,50 @@ function FindingsView() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('abiertos')
 
+  const normalizeFinding = (finding) => ({
+    ...finding,
+    finding_id: finding.finding_id || finding.id,
+    auditoria: finding.auditoria || finding.audit_name || finding.nombre_auditoria,
+    codigo_punto: finding.codigo_punto || finding.codigo || finding.punto,
+    calificacion_origen:
+      finding.calificacion_origen ?? finding.calificacion ?? finding.process_calificacion,
+    criticidad: finding.criticidad || 'menor',
+    estado: finding.estado || 'abierto',
+    tipo: finding.tipo || 'hallazgo',
+    proceso: finding.proceso || finding.proceso_auditado || finding.responsable_proceso || null,
+    automatico: finding.automatico ?? true,
+  })
+
   const loadFindings = async () => {
     setLoading(true)
 
-    const { data, error } = await supabase
+    const { data: viewData, error: viewError } = await supabase
       .from('v_fcca_findings')
       .select('*')
       .order('created_at', { ascending: false })
 
-    if (error) {
-      console.error(error)
-      alert(`Error al cargar hallazgos: ${error.message}`)
-      setLoading(false)
-      return
+    if (viewError) {
+      console.error(viewError)
     }
 
-    setFindings(data || [])
+    const { data: baseData, error: baseError } = await supabase
+      .from('findings')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (baseError) {
+      console.warn('No se pudieron cargar hallazgos desde tabla base:', baseError.message)
+    }
+
+    const merged = [...(viewData || []), ...(baseData || [])]
+      .map(normalizeFinding)
+      .filter((finding) => finding.finding_id)
+
+    const unique = Array.from(
+      new Map(merged.map((finding) => [finding.finding_id, finding])).values(),
+    ).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+
+    setFindings(unique)
     setLoading(false)
   }
 
@@ -672,22 +700,59 @@ function ActionsView() {
   const [uploadingId, setUploadingId] = useState(null)
   const [commentDrafts, setCommentDrafts] = useState({})
 
+  const normalizeAction = (action) => ({
+    ...action,
+    action_id: action.action_id || action.id,
+    finding_id: action.finding_id || action.hallazgo_id || null,
+    codigo_punto: action.codigo_punto || action.codigo || action.punto || null,
+    titulo: action.titulo || 'Acción correctiva derivada de hallazgo FCCA',
+    descripcion: action.descripcion || action.detalle || 'Acción correctiva generada desde hallazgo FCCA.',
+    responsable:
+      action.responsable ||
+      action.responsable_nombre ||
+      action.proceso ||
+      action.proceso_auditado ||
+      'Responsable de Acción',
+    estado: action.estado || 'pendiente',
+    prioridad: action.prioridad || 'media',
+    semaforo: action.semaforo || action.estado_validacion || 'a_tiempo',
+    proceso: action.proceso || action.proceso_auditado || action.responsable_proceso || null,
+  })
+
   const loadActions = async () => {
     setLoading(true)
 
-    const { data, error } = await supabase
+    const { data: viewData, error: viewError } = await supabase
       .from('v_fcca_actions')
       .select('*')
       .order('fecha_compromiso', { ascending: true })
 
-    if (error) {
-      console.error(error)
-      alert(`Error al cargar acciones: ${error.message}`)
-      setLoading(false)
-      return
+    if (viewError) {
+      console.error(viewError)
     }
 
-    setActions(data || [])
+    const { data: baseData, error: baseError } = await supabase
+      .from('actions')
+      .select('*')
+      .order('fecha_compromiso', { ascending: true })
+
+    if (baseError) {
+      console.warn('No se pudieron cargar acciones desde tabla base:', baseError.message)
+    }
+
+    const merged = [...(viewData || []), ...(baseData || [])]
+      .map(normalizeAction)
+      .filter((action) => action.action_id)
+
+    const unique = Array.from(
+      new Map(merged.map((action) => [action.action_id, action])).values(),
+    ).sort((a, b) => {
+      const aDate = a.fecha_compromiso || '9999-12-31'
+      const bDate = b.fecha_compromiso || '9999-12-31'
+      return String(aDate).localeCompare(String(bDate))
+    })
+
+    setActions(unique)
     setLoading(false)
   }
 
@@ -2511,50 +2576,321 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
   const syncProcessFindingAction = async (item, value, processResponseId = null) => {
     if (!item?.template_item_id || !processAudit) return
 
-    // IMPORTANTE:
-    // En la evaluación por proceso NO enviamos response_id al RPC.
-    // La tabla findings tiene una restricción única para hallazgos automáticos por response_id
-    // (idx_findings_unique_response_auto). Si mandamos el response_id general, el hallazgo
-    // por proceso puede chocar con un hallazgo general ya existente. El vínculo específico
-    // debe quedar por template_item_id + proceso + process_response_id.
-    const payload = {
-      target_audit_id: auditId,
-      target_template_item_id: item.template_item_id,
-      target_response_id: null,
-      target_process_response_id: processResponseId,
-      target_proceso: processAudit,
-      target_calificacion: value,
-      target_codigo_punto: item.codigo_punto || null,
-      target_criterio: item.criterio || null,
-      target_es_critico: Boolean(item.es_critico),
+    const isFindingValue = ['0', '1', '2'].includes(value)
+    const baseDescription = `Punto FCCA ${item.codigo_punto || 'S/C'} - ${processAudit} con calificación ${value}. Criterio: ${item.criterio || 'Sin criterio registrado'}`
+    const today = new Date()
+    const dueDate = new Date(today)
+    dueDate.setDate(today.getDate() + 90)
+
+    const findingPayload = {
+      company_id: null,
+      audit_id: auditId,
+      response_id: null,
+      template_item_id: item.template_item_id,
+      process_response_id: processResponseId || null,
+      proceso: processAudit,
+      descripcion: baseDescription,
+      tipo:
+        value === '0'
+          ? 'no_cumplimiento'
+          : 'cumplimiento_condicionado',
+      criticidad: item.es_critico || value === '0' ? 'critica' : 'menor',
+      estado: isFindingValue ? 'abierto' : 'cerrado',
+      calificacion_origen: value,
+      automatico: true,
+      updated_at: new Date().toISOString(),
     }
 
-    const { error } = await supabase.rpc('sync_process_finding_action', payload)
+    const actionTitle = `Acción correctiva - ${processAudit} - Punto ${item.codigo_punto || 'S/C'}`
+    const actionDescription = `Proceso: ${processAudit}. ${baseDescription}`
 
-    if (!error) return
+    const findExistingProcessFinding = async () => {
+      let query = supabase
+        .from('findings')
+        .select('*')
+        .eq('audit_id', auditId)
+        .eq('template_item_id', item.template_item_id)
+        .eq('proceso', processAudit)
+        .eq('automatico', true)
+        .limit(1)
 
-    const duplicateError =
-      String(error.message || '').includes('idx_findings_unique_response_auto') ||
-      String(error.message || '').toLowerCase().includes('duplicate key')
+      const { data, error } = await query
 
-    if (duplicateError) {
-      console.warn(
-        'Se evitó duplicar hallazgo automático por response_id. Reintentando sincronización por proceso sin response_id general.',
-        error.message,
+      if (error) {
+        console.warn('No se pudo buscar hallazgo por proceso:', error.message)
+        return null
+      }
+
+      return data?.[0] || null
+    }
+
+    const findExistingProcessAction = async (findingId) => {
+      if (!findingId) return null
+
+      const { data, error } = await supabase
+        .from('actions')
+        .select('*')
+        .eq('finding_id', findingId)
+        .limit(1)
+
+      if (error) {
+        console.warn('No se pudo buscar acción por proceso:', error.message)
+        return null
+      }
+
+      return data?.[0] || null
+    }
+
+    const insertFindingSafely = async (payload) => {
+      const attempts = [
+        payload,
+        {
+          ...payload,
+          process_response_id: undefined,
+        },
+        {
+          ...payload,
+          process_response_id: undefined,
+          proceso: undefined,
+        },
+      ]
+
+      for (const attempt of attempts) {
+        const cleanPayload = Object.fromEntries(
+          Object.entries(attempt).filter(([, val]) => val !== undefined),
+        )
+
+        const { data, error } = await supabase
+          .from('findings')
+          .insert(cleanPayload)
+          .select('*')
+          .single()
+
+        if (!error) return { data, error: null }
+
+        const message = String(error.message || '').toLowerCase()
+        const recoverable =
+          message.includes('column') ||
+          message.includes('duplicate key') ||
+          message.includes('idx_findings_unique_response_auto')
+
+        if (!recoverable) return { data: null, error }
+      }
+
+      return {
+        data: null,
+        error: {
+          message:
+            'No se pudo insertar hallazgo por proceso después de intentar payloads compatibles.',
+        },
+      }
+    }
+
+    const updateFindingSafely = async (findingId, payload) => {
+      const attempts = [
+        payload,
+        {
+          ...payload,
+          process_response_id: undefined,
+        },
+        {
+          ...payload,
+          process_response_id: undefined,
+          proceso: undefined,
+        },
+      ]
+
+      for (const attempt of attempts) {
+        const cleanPayload = Object.fromEntries(
+          Object.entries(attempt).filter(([, val]) => val !== undefined),
+        )
+
+        const { data, error } = await supabase
+          .from('findings')
+          .update(cleanPayload)
+          .eq('id', findingId)
+          .select('*')
+          .single()
+
+        if (!error) return { data, error: null }
+
+        const message = String(error.message || '').toLowerCase()
+        const recoverable = message.includes('column')
+        if (!recoverable) return { data: null, error }
+      }
+
+      return { data: null, error: { message: 'No se pudo actualizar hallazgo.' } }
+    }
+
+    const insertActionSafely = async (findingId) => {
+      const basePayload = {
+        company_id: null,
+        audit_id: auditId,
+        response_id: null,
+        finding_id: findingId,
+        template_item_id: item.template_item_id,
+        process_response_id: processResponseId || null,
+        proceso: processAudit,
+        titulo: actionTitle,
+        descripcion: actionDescription,
+        tipo: 'correctiva',
+        estado: 'pendiente',
+        prioridad: item.es_critico || value === '0' ? 'alta' : 'media',
+        fecha_inicio: today.toISOString().slice(0, 10),
+        fecha_compromiso: dueDate.toISOString().slice(0, 10),
+        comentarios: null,
+        origen: 'proceso',
+        automatico: true,
+        updated_at: new Date().toISOString(),
+      }
+
+      const attempts = [
+        basePayload,
+        {
+          ...basePayload,
+          process_response_id: undefined,
+        },
+        {
+          ...basePayload,
+          process_response_id: undefined,
+          proceso: undefined,
+        },
+        {
+          ...basePayload,
+          process_response_id: undefined,
+          proceso: undefined,
+          origen: undefined,
+        },
+      ]
+
+      for (const attempt of attempts) {
+        const cleanPayload = Object.fromEntries(
+          Object.entries(attempt).filter(([, val]) => val !== undefined),
+        )
+
+        const { data, error } = await supabase
+          .from('actions')
+          .insert(cleanPayload)
+          .select('*')
+          .single()
+
+        if (!error) return { data, error: null }
+
+        const message = String(error.message || '').toLowerCase()
+        const recoverable =
+          message.includes('column') ||
+          message.includes('duplicate key') ||
+          message.includes('unique')
+
+        if (!recoverable) return { data: null, error }
+      }
+
+      return { data: null, error: { message: 'No se pudo insertar acción.' } }
+    }
+
+    const updateActionSafely = async (actionId) => {
+      const payload = {
+        titulo: actionTitle,
+        descripcion: actionDescription,
+        prioridad: item.es_critico || value === '0' ? 'alta' : 'media',
+        estado: isFindingValue ? 'pendiente' : 'cerrada',
+        fecha_cierre: isFindingValue ? null : new Date().toISOString().slice(0, 10),
+        updated_at: new Date().toISOString(),
+      }
+
+      const { error } = await supabase
+        .from('actions')
+        .update(payload)
+        .eq('id', actionId)
+
+      if (error) {
+        console.warn('No se pudo actualizar acción por proceso:', error.message)
+      }
+    }
+
+    try {
+      const rpcPayload = {
+        target_audit_id: auditId,
+        target_template_item_id: item.template_item_id,
+        target_response_id: null,
+        target_process_response_id: processResponseId,
+        target_proceso: processAudit,
+        target_calificacion: value,
+        target_codigo_punto: item.codigo_punto || null,
+        target_criterio: item.criterio || null,
+        target_es_critico: Boolean(item.es_critico),
+      }
+
+      const { error: rpcError } = await supabase.rpc(
+        'sync_process_finding_action',
+        rpcPayload,
       )
 
-      const { error: retryError } = await supabase.rpc('sync_process_finding_action', {
-        ...payload,
-        target_response_id: null,
-      })
+      if (rpcError) {
+        console.warn(
+          'RPC sync_process_finding_action no completó; se usará sincronización directa:',
+          rpcError.message,
+        )
+      }
 
-      if (!retryError) return
+      const existingFinding = await findExistingProcessFinding()
 
-      console.warn('Reintento de sincronización por proceso falló:', retryError.message)
-      return
+      if (!isFindingValue) {
+        if (existingFinding?.id) {
+          await updateFindingSafely(existingFinding.id, {
+            ...findingPayload,
+            estado: 'cerrado',
+          })
+
+          const existingAction = await findExistingProcessAction(existingFinding.id)
+          if (existingAction?.id) {
+            await updateActionSafely(existingAction.id)
+          }
+        }
+
+        return
+      }
+
+      let findingRecord = existingFinding
+
+      if (findingRecord?.id) {
+        const { data, error } = await updateFindingSafely(
+          findingRecord.id,
+          findingPayload,
+        )
+
+        if (error) {
+          console.warn('No se pudo actualizar hallazgo por proceso:', error.message)
+        } else {
+          findingRecord = data || findingRecord
+        }
+      } else {
+        const { data, error } = await insertFindingSafely(findingPayload)
+
+        if (error) {
+          console.warn('No se pudo crear hallazgo por proceso:', error.message)
+          return
+        }
+
+        findingRecord = data
+      }
+
+      if (!findingRecord?.id) return
+
+      const existingAction = await findExistingProcessAction(findingRecord.id)
+
+      if (existingAction?.id) {
+        await updateActionSafely(existingAction.id)
+      } else {
+        const { error } = await insertActionSafely(findingRecord.id)
+
+        if (error) {
+          console.warn('No se pudo crear acción por proceso:', error.message)
+        }
+      }
+    } catch (error) {
+      console.warn('No se pudo sincronizar hallazgo/acción por proceso:', error.message)
     }
-
-    console.warn('No se pudo sincronizar hallazgo/acción por proceso:', error.message)
   }
 
   const updateProcessRating = async (item, value) => {
