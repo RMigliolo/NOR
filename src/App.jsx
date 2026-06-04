@@ -182,6 +182,18 @@ function getRatingConfig(value) {
   return ratingOptions.find((item) => item.value === value)
 }
 
+function extractProcesoFromText(value) {
+  const text = String(value || '')
+  const match = text.match(/Proceso:\s*([^|.]+)/i)
+  return match?.[1]?.trim() || null
+}
+
+function extractCodigoPuntoFromText(value) {
+  const text = String(value || '')
+  const match = text.match(/Punto(?:\s+FCCA)?\s+([0-9]+(?:\.[0-9]+)?)/i)
+  return match?.[1] || null
+}
+
 function LoginScreen({ onLogin }) {
   const [email, setEmail] = useState('auditor1@nor.com')
   const [password, setPassword] = useState('')
@@ -410,19 +422,32 @@ function FindingsView() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('abiertos')
 
-  const normalizeFinding = (finding) => ({
-    ...finding,
-    finding_id: finding.finding_id || finding.id,
-    auditoria: finding.auditoria || finding.audit_name || finding.nombre_auditoria,
-    codigo_punto: finding.codigo_punto || finding.codigo || finding.punto,
-    calificacion_origen:
-      finding.calificacion_origen ?? finding.calificacion ?? finding.process_calificacion,
-    criticidad: finding.criticidad || 'menor',
-    estado: finding.estado || 'abierto',
-    tipo: finding.tipo || 'hallazgo',
-    proceso: finding.proceso || finding.proceso_auditado || finding.responsable_proceso || null,
-    automatico: finding.automatico ?? true,
-  })
+  const normalizeFinding = (finding) => {
+    const textoBase = `${finding.descripcion || ''} ${finding.titulo || ''}`
+    const procesoDetectado =
+      finding.proceso ||
+      finding.proceso_auditado ||
+      finding.responsable_proceso ||
+      extractProcesoFromText(textoBase)
+
+    return {
+      ...finding,
+      finding_id: finding.finding_id || finding.id,
+      auditoria: finding.auditoria || finding.audit_name || finding.nombre_auditoria,
+      codigo_punto:
+        finding.codigo_punto ||
+        finding.codigo ||
+        finding.punto ||
+        extractCodigoPuntoFromText(textoBase),
+      calificacion_origen:
+        finding.calificacion_origen ?? finding.calificacion ?? finding.process_calificacion,
+      criticidad: finding.criticidad || 'menor',
+      estado: finding.estado || 'abierto',
+      tipo: finding.tipo || 'hallazgo',
+      proceso: procesoDetectado,
+      automatico: finding.automatico ?? true,
+    }
+  }
 
   const loadFindings = async () => {
     setLoading(true)
@@ -654,6 +679,12 @@ function FindingsView() {
                           Automático
                         </span>
                       )}
+
+                      {finding.proceso && (
+                        <span className="rounded-full bg-emerald-50 border border-emerald-100 px-3 py-1 text-xs font-black text-emerald-700">
+                          Proceso: {finding.proceso}
+                        </span>
+                      )}
                     </div>
 
                     <h3 className="text-xl font-black text-slate-950 leading-snug">
@@ -700,24 +731,36 @@ function ActionsView() {
   const [uploadingId, setUploadingId] = useState(null)
   const [commentDrafts, setCommentDrafts] = useState({})
 
-  const normalizeAction = (action) => ({
-    ...action,
-    action_id: action.action_id || action.id,
-    finding_id: action.finding_id || action.hallazgo_id || null,
-    codigo_punto: action.codigo_punto || action.codigo || action.punto || null,
-    titulo: action.titulo || 'Acción correctiva derivada de hallazgo FCCA',
-    descripcion: action.descripcion || action.detalle || 'Acción correctiva generada desde hallazgo FCCA.',
-    responsable:
-      action.responsable ||
-      action.responsable_nombre ||
+  const normalizeAction = (action) => {
+    const textoBase = `${action.descripcion || ''} ${action.titulo || ''}`
+    const procesoDetectado =
       action.proceso ||
       action.proceso_auditado ||
-      'Responsable de Acción',
-    estado: action.estado || 'pendiente',
-    prioridad: action.prioridad || 'media',
-    semaforo: action.semaforo || action.estado_validacion || 'a_tiempo',
-    proceso: action.proceso || action.proceso_auditado || action.responsable_proceso || null,
-  })
+      action.responsable_proceso ||
+      extractProcesoFromText(textoBase)
+
+    return {
+      ...action,
+      action_id: action.action_id || action.id,
+      finding_id: action.finding_id || action.hallazgo_id || null,
+      codigo_punto:
+        action.codigo_punto ||
+        action.codigo ||
+        action.punto ||
+        extractCodigoPuntoFromText(textoBase),
+      titulo: action.titulo || 'Acción correctiva derivada de hallazgo FCCA',
+      descripcion: action.descripcion || action.detalle || 'Acción correctiva generada desde hallazgo FCCA.',
+      responsable:
+        action.responsable ||
+        action.responsable_nombre ||
+        procesoDetectado ||
+        'Responsable de Acción',
+      estado: action.estado || 'pendiente',
+      prioridad: action.prioridad || 'media',
+      semaforo: action.semaforo || action.estado_validacion || 'a_tiempo',
+      proceso: procesoDetectado,
+    }
+  }
 
   const loadActions = async () => {
     setLoading(true)
@@ -1125,6 +1168,12 @@ function ActionsView() {
                       <span className="rounded-full bg-white border border-slate-200 px-3 py-1 text-xs font-black text-slate-600">
                         Estado: {action.estado || 'pendiente'}
                       </span>
+
+                      {action.proceso && (
+                        <span className="rounded-full bg-emerald-50 border border-emerald-100 px-3 py-1 text-xs font-black text-emerald-700">
+                          Proceso: {action.proceso}
+                        </span>
+                      )}
                     </div>
 
                     <h3 className="text-xl md:text-2xl font-black text-slate-950 leading-snug">
