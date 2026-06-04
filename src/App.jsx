@@ -723,13 +723,23 @@ function FindingsView() {
   )
 }
 
-function ActionsView() {
+function ActionsView({ profile }) {
   const [actions, setActions] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('activas')
   const [attachments, setAttachments] = useState([])
   const [uploadingId, setUploadingId] = useState(null)
   const [commentDrafts, setCommentDrafts] = useState({})
+
+  const userRoleText = String(profile?.puesto || profile?.rol || profile?.role || '').toLowerCase()
+  const canReopenActions =
+    !userRoleText ||
+    userRoleText.includes('admin') ||
+    userRoleText.includes('sgi') ||
+    userRoleText.includes('calidad') ||
+    userRoleText.includes('auditor') ||
+    userRoleText.includes('gerente') ||
+    userRoleText.includes('coordinador')
 
   const normalizeAction = (action) => {
     const textoBase = `${action.descripcion || ''} ${action.titulo || ''}`
@@ -1075,6 +1085,78 @@ function ActionsView() {
     await loadActions()
   }
 
+  const reopenAction = async (action) => {
+    if (!canReopenActions) {
+      alert('Tu perfil no tiene autorización para reabrir acciones correctivas.')
+      return
+    }
+
+    const motivo = window.prompt(
+      'Motivo de reapertura de la acción correctiva:',
+      'Reapertura autorizada para corrección o seguimiento adicional.',
+    )
+
+    if (motivo === null) return
+
+    const { data: userData } = await supabase.auth.getUser()
+    const fecha = new Date().toISOString()
+    const comentarioAnterior = String(action.comentarios || '').trim()
+    const comentarioReapertura = `[${new Date().toLocaleString('es-MX')}] Reapertura por ${profile?.nombre || userData?.user?.email || 'usuario autorizado'}: ${motivo}`
+
+    const payloadBase = {
+      estado: 'en_proceso',
+      fecha_cierre: null,
+      comentarios: comentarioAnterior
+        ? `${comentarioAnterior}\n\n${comentarioReapertura}`
+        : comentarioReapertura,
+      updated_at: fecha,
+    }
+
+    const attempts = [
+      {
+        ...payloadBase,
+        estado_validacion: 'pendiente_validacion',
+        comentario_validacion: motivo,
+        fecha_validacion: null,
+        validado_por: null,
+      },
+      {
+        ...payloadBase,
+        estado_validacion: 'pendiente_validacion',
+        comentario_validacion: motivo,
+        fecha_validacion: null,
+      },
+      {
+        ...payloadBase,
+        estado_validacion: 'pendiente_validacion',
+        comentario_validacion: motivo,
+      },
+      payloadBase,
+    ]
+
+    let lastError = null
+
+    for (const payload of attempts) {
+      const { error } = await supabase
+        .from('actions')
+        .update(payload)
+        .eq('id', action.action_id)
+
+      if (!error) {
+        await loadActions()
+        alert('Acción reabierta correctamente.')
+        return
+      }
+
+      lastError = error
+      const message = String(error.message || '').toLowerCase()
+      if (!message.includes('column') && !message.includes('schema')) break
+    }
+
+    console.error(lastError)
+    alert(`No se pudo reabrir la acción: ${lastError?.message || 'Error desconocido'}`)
+  }
+
   if (loading) {
     return (
       <div className="bg-white rounded-[34px] p-8 shadow-[0_18px_50px_rgba(15,23,42,0.09)] border border-white">
@@ -1331,6 +1413,16 @@ function ActionsView() {
                         <option value="en_proceso">En proceso</option>
                         <option value="cerrada">Cerrada</option>
                       </select>
+
+                      {action.estado === 'cerrada' && canReopenActions && (
+                        <button
+                          type="button"
+                          onClick={() => reopenAction(action)}
+                          className="mt-4 w-full rounded-2xl bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-3 font-black"
+                        >
+                          Reabrir acción
+                        </button>
+                      )}
 
                       {action.estado === 'cerrada' && action.estado_validacion !== 'validada' && (
                         <div className="mt-4 grid grid-cols-1 gap-2">
@@ -2837,20 +2929,28 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
       return { data: null, error: { message: 'No se pudo insertar acción.' } }
     }
 
-    const updateActionSafely = async (actionId) => {
+    const updateActionSafely = async (existingAction) => {
+      if (!existingAction?.id) return
+
+      const isAlreadyClosed = existingAction.estado === 'cerrada'
       const payload = {
         titulo: actionTitle,
         descripcion: actionDescription,
         prioridad: item.es_critico || value === '0' ? 'alta' : 'media',
-        estado: 'pendiente',
-        fecha_cierre: null,
         updated_at: new Date().toISOString(),
+      }
+
+      // Regla de trazabilidad: una acción cerrada o validada no se reabre automáticamente desde el checklist.
+      // La reapertura debe hacerse desde el módulo de Acciones correctivas por un usuario autorizado.
+      if (!isAlreadyClosed) {
+        payload.estado = existingAction.estado || 'pendiente'
+        payload.fecha_cierre = existingAction.fecha_cierre || null
       }
 
       const { error } = await supabase
         .from('actions')
         .update(payload)
-        .eq('id', actionId)
+        .eq('id', existingAction.id)
 
       if (error) {
         console.warn('No se pudo actualizar acción por proceso:', error.message)
@@ -2876,8 +2976,9 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
         const hasFiles = Array.isArray(actionFiles) && actionFiles.length > 0
         const hasComment = Boolean(String(existingAction.comentarios || '').trim())
         const isAutomaticProcessAction = existingAction.automatico !== false
+        const hasOperationalProgress = !['pendiente', null, undefined, ''].includes(existingAction.estado)
 
-        if (!hasFiles && !hasComment && isAutomaticProcessAction) {
+        if (!hasFiles && !hasComment && !hasOperationalProgress && isAutomaticProcessAction) {
           const { error: deleteActionError } = await supabase
             .from('actions')
             .delete()
@@ -2982,7 +3083,7 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
       const existingAction = await findExistingProcessAction(findingRecord.id)
 
       if (existingAction?.id) {
-        await updateActionSafely(existingAction.id)
+        await updateActionSafely(existingAction)
       } else {
         const { error } = await insertActionSafely(findingRecord.id)
 
@@ -3848,7 +3949,7 @@ export default function App() {
           ) : activeView === 'hallazgos' ? (
             <FindingsView />
           ) : activeView === 'acciones' ? (
-            <ActionsView />
+            <ActionsView profile={profile} />
           ) : (
             <ComingSoon title={currentMenuLabel} />
           )}
