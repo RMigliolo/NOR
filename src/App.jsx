@@ -182,88 +182,6 @@ function getRatingConfig(value) {
   return ratingOptions.find((item) => item.value === value)
 }
 
-function extractPointCode(value) {
-  const match = String(value || '').match(/Punto(?:\s+FCCA)?\s+([0-9]+(?:\.[0-9]+)?)/i)
-  return match?.[1] || null
-}
-
-function getActionSemaforo(fechaCompromiso, estado, estadoValidacion) {
-  if (estado === 'cerrada' && estadoValidacion === 'validada') return 'cerrada_validada'
-  if (estado === 'cerrada') return 'pendiente_validacion'
-
-  if (!fechaCompromiso) return 'a_tiempo'
-
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  const due = new Date(`${fechaCompromiso}T00:00:00`)
-  const diffDays = Math.ceil((due - today) / (1000 * 60 * 60 * 24))
-
-  if (diffDays < 0) return 'vencida'
-  if (diffDays <= 15) return 'por_vencer'
-
-  return 'a_tiempo'
-}
-
-function normalizeFindingRow(row) {
-  return {
-    ...row,
-    finding_id: row.finding_id || row.id,
-    codigo_punto:
-      row.codigo_punto ||
-      extractPointCode(row.descripcion) ||
-      extractPointCode(row.titulo),
-    auditoria: row.auditoria || row.audit_name || row.nombre_auditoria || 'Auditoría FCCA',
-    tipo: row.tipo || (row.proceso ? 'hallazgo_proceso' : 'hallazgo'),
-    estado: row.estado || 'abierto',
-    criticidad: row.criticidad || 'menor',
-    calificacion_origen: row.calificacion_origen ?? row.calificacion ?? null,
-    automatico: row.automatico ?? true,
-  }
-}
-
-function normalizeActionRow(row) {
-  return {
-    ...row,
-    action_id: row.action_id || row.id,
-    codigo_punto:
-      row.codigo_punto ||
-      extractPointCode(row.titulo) ||
-      extractPointCode(row.descripcion),
-    estado: row.estado || 'pendiente',
-    prioridad: row.prioridad || 'media',
-    semaforo:
-      row.semaforo ||
-      getActionSemaforo(row.fecha_compromiso, row.estado, row.estado_validacion),
-    titulo: row.titulo || 'Acción correctiva',
-    descripcion: row.descripcion || '',
-    responsable: row.responsable || row.proceso || 'Sin asignar',
-    estado_validacion: row.estado_validacion || 'pendiente_validacion',
-  }
-}
-
-function mergeRowsById(viewRows, rawRows, idKey) {
-  const map = new Map()
-
-  ;(viewRows || []).forEach((row) => {
-    const key = row?.[idKey]
-    if (key) map.set(key, row)
-  })
-
-  ;(rawRows || []).forEach((row) => {
-    const key = row?.[idKey]
-    if (!key) return
-
-    if (map.has(key)) {
-      map.set(key, { ...row, ...map.get(key) })
-    } else {
-      map.set(key, row)
-    }
-  })
-
-  return Array.from(map.values())
-}
-
 function LoginScreen({ onLogin }) {
   const [email, setEmail] = useState('auditor1@nor.com')
   const [password, setPassword] = useState('')
@@ -495,40 +413,19 @@ function FindingsView() {
   const loadFindings = async () => {
     setLoading(true)
 
-    const [viewResult, rawResult] = await Promise.all([
-      supabase
-        .from('v_fcca_findings')
-        .select('*')
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('findings')
-        .select('*')
-        .order('created_at', { ascending: false }),
-    ])
+    const { data, error } = await supabase
+      .from('v_fcca_findings')
+      .select('*')
+      .order('created_at', { ascending: false })
 
-    if (viewResult.error && rawResult.error) {
-      console.error(viewResult.error)
-      console.error(rawResult.error)
-      alert(`Error al cargar hallazgos: ${viewResult.error.message}`)
+    if (error) {
+      console.error(error)
+      alert(`Error al cargar hallazgos: ${error.message}`)
       setLoading(false)
       return
     }
 
-    if (viewResult.error) {
-      console.warn('Vista v_fcca_findings no disponible:', viewResult.error.message)
-    }
-
-    if (rawResult.error) {
-      console.warn('Tabla findings no disponible:', rawResult.error.message)
-    }
-
-    const viewRows = (viewResult.data || []).map(normalizeFindingRow)
-    const rawRows = (rawResult.data || []).map(normalizeFindingRow)
-
-    const merged = mergeRowsById(viewRows, rawRows, 'finding_id')
-      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
-
-    setFindings(merged)
+    setFindings(data || [])
     setLoading(false)
   }
 
@@ -729,12 +626,6 @@ function FindingsView() {
                           Automático
                         </span>
                       )}
-
-                      {finding.proceso && (
-                        <span className="rounded-full bg-indigo-50 border border-indigo-100 px-3 py-1 text-xs font-black text-indigo-700">
-                          Proceso: {finding.proceso}
-                        </span>
-                      )}
                     </div>
 
                     <h3 className="text-xl font-black text-slate-950 leading-snug">
@@ -784,44 +675,19 @@ function ActionsView() {
   const loadActions = async () => {
     setLoading(true)
 
-    const [viewResult, rawResult] = await Promise.all([
-      supabase
-        .from('v_fcca_actions')
-        .select('*')
-        .order('fecha_compromiso', { ascending: true }),
-      supabase
-        .from('actions')
-        .select('*')
-        .order('fecha_compromiso', { ascending: true }),
-    ])
+    const { data, error } = await supabase
+      .from('v_fcca_actions')
+      .select('*')
+      .order('fecha_compromiso', { ascending: true })
 
-    if (viewResult.error && rawResult.error) {
-      console.error(viewResult.error)
-      console.error(rawResult.error)
-      alert(`Error al cargar acciones: ${viewResult.error.message}`)
+    if (error) {
+      console.error(error)
+      alert(`Error al cargar acciones: ${error.message}`)
       setLoading(false)
       return
     }
 
-    if (viewResult.error) {
-      console.warn('Vista v_fcca_actions no disponible:', viewResult.error.message)
-    }
-
-    if (rawResult.error) {
-      console.warn('Tabla actions no disponible:', rawResult.error.message)
-    }
-
-    const viewRows = (viewResult.data || []).map(normalizeActionRow)
-    const rawRows = (rawResult.data || []).map(normalizeActionRow)
-
-    const merged = mergeRowsById(viewRows, rawRows, 'action_id')
-      .sort((a, b) => {
-        const dateA = a.fecha_compromiso ? new Date(a.fecha_compromiso).getTime() : Number.MAX_SAFE_INTEGER
-        const dateB = b.fecha_compromiso ? new Date(b.fecha_compromiso).getTime() : Number.MAX_SAFE_INTEGER
-        return dateA - dateB
-      })
-
-    setActions(merged)
+    setActions(data || [])
     setLoading(false)
   }
 
@@ -1194,12 +1060,6 @@ function ActionsView() {
                       <span className="rounded-full bg-white border border-slate-200 px-3 py-1 text-xs font-black text-slate-600">
                         Estado: {action.estado || 'pendiente'}
                       </span>
-
-                      {action.proceso && (
-                        <span className="rounded-full bg-indigo-50 border border-indigo-100 px-3 py-1 text-xs font-black text-indigo-700">
-                          Proceso: {action.proceso}
-                        </span>
-                      )}
                     </div>
 
                     <h3 className="text-xl md:text-2xl font-black text-slate-950 leading-snug">
@@ -1478,7 +1338,7 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
 
       if (error) {
         console.error(error)
-        setDetailLoading(false)
+        if (active) setDetailLoading(false)
         return
       }
 
@@ -1504,8 +1364,57 @@ function Dashboard({ dashboard, onOpenAudit, loading }) {
 
     loadDashboardDetail()
 
+    const refreshDashboardDetail = () => {
+      loadDashboardDetail()
+    }
+
+    const channel = supabase
+      .channel(`dashboard-live-${first.audit_id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'audit_responses',
+          filter: `audit_id=eq.${first.audit_id}`,
+        },
+        refreshDashboardDetail,
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'audit_process_responses',
+          filter: `audit_id=eq.${first.audit_id}`,
+        },
+        refreshDashboardDetail,
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'findings',
+          filter: `audit_id=eq.${first.audit_id}`,
+        },
+        refreshDashboardDetail,
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'actions',
+          filter: `audit_id=eq.${first.audit_id}`,
+        },
+        refreshDashboardDetail,
+      )
+      .subscribe()
+
     return () => {
       active = false
+      supabase.removeChannel(channel)
     }
   }, [first?.audit_id])
 
@@ -2602,188 +2511,50 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
   const syncProcessFindingAction = async (item, value, processResponseId = null) => {
     if (!item?.template_item_id || !processAudit) return
 
-    const directSync = async () => {
-      const isClosedValue = value === null || value === undefined || ['3', 'NA'].includes(value)
-
-      if (isClosedValue) {
-        await supabase
-          .from('findings')
-          .update({
-            estado: 'cerrado',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('audit_id', auditId)
-          .eq('template_item_id', item.template_item_id)
-          .eq('proceso', processAudit)
-          .eq('automatico', true)
-
-        await supabase
-          .from('actions')
-          .update({
-            estado: 'cerrada',
-            fecha_cierre: new Date().toISOString().slice(0, 10),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('audit_id', auditId)
-          .eq('template_item_id', item.template_item_id)
-          .eq('proceso', processAudit)
-
-        return
-      }
-
-      if (!['0', '1', '2'].includes(value)) return
-
-      const criticidad = item.es_critico || value === '0'
-        ? 'critica'
-        : value === '1'
-          ? 'mayor'
-          : 'menor'
-
-      const prioridad = item.es_critico || value === '0' ? 'alta' : 'media'
-
-      const descripcionHallazgo = `Proceso: ${processAudit} | Punto ${item.codigo_punto || 'S/C'} con calificación ${value}. Criterio: ${item.criterio || 'Sin criterio'}`
-
-      const tituloAccion = `Acción correctiva - ${processAudit} - Punto ${item.codigo_punto || 'S/C'}`
-
-      const descripcionAccion = `Atender hallazgo del proceso ${processAudit} en el punto ${item.codigo_punto || 'S/C'}. Calificación origen: ${value}. Criterio: ${item.criterio || 'Sin criterio'}`
-
-      const { data: existingFinding, error: findExistingError } = await supabase
-        .from('findings')
-        .select('id')
-        .eq('audit_id', auditId)
-        .eq('template_item_id', item.template_item_id)
-        .eq('proceso', processAudit)
-        .limit(1)
-        .maybeSingle()
-
-      if (findExistingError) {
-        throw findExistingError
-      }
-
-      let findingId = existingFinding?.id
-
-      if (findingId) {
-        const { error: updateFindingError } = await supabase
-          .from('findings')
-          .update({
-            response_id: item.response_id || null,
-            process_response_id: processResponseId,
-            tipo: 'hallazgo_proceso',
-            descripcion: descripcionHallazgo,
-            criticidad,
-            estado: 'abierto',
-            automatico: true,
-            calificacion_origen: value,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', findingId)
-
-        if (updateFindingError) throw updateFindingError
-      } else {
-        const { data: insertedFinding, error: insertFindingError } = await supabase
-          .from('findings')
-          .insert({
-            audit_id: auditId,
-            response_id: item.response_id || null,
-            template_item_id: item.template_item_id,
-            process_response_id: processResponseId,
-            proceso: processAudit,
-            tipo: 'hallazgo_proceso',
-            descripcion: descripcionHallazgo,
-            criticidad,
-            estado: 'abierto',
-            automatico: true,
-            calificacion_origen: value,
-          })
-          .select('id')
-          .single()
-
-        if (insertFindingError) throw insertFindingError
-
-        findingId = insertedFinding.id
-      }
-
-      const { data: existingAction, error: findExistingActionError } = await supabase
-        .from('actions')
-        .select('id, estado, estado_validacion')
-        .eq('audit_id', auditId)
-        .eq('template_item_id', item.template_item_id)
-        .eq('proceso', processAudit)
-        .limit(1)
-        .maybeSingle()
-
-      if (findExistingActionError) {
-        throw findExistingActionError
-      }
-
-      if (existingAction?.id) {
-        const { error: updateActionError } = await supabase
-          .from('actions')
-          .update({
-            response_id: item.response_id || null,
-            finding_id: findingId,
-            process_response_id: processResponseId,
-            titulo: tituloAccion,
-            descripcion: descripcionAccion,
-            responsable: processAudit,
-            prioridad,
-            estado: existingAction.estado === 'cerrada' ? 'pendiente' : existingAction.estado || 'pendiente',
-            estado_validacion: existingAction.estado_validacion === 'validada'
-              ? 'pendiente_validacion'
-              : existingAction.estado_validacion || 'pendiente_validacion',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', existingAction.id)
-
-        if (updateActionError) throw updateActionError
-      } else {
-        const dueDate = new Date()
-        dueDate.setDate(dueDate.getDate() + 90)
-
-        const { error: insertActionError } = await supabase
-          .from('actions')
-          .insert({
-            audit_id: auditId,
-            response_id: item.response_id || null,
-            finding_id: findingId,
-            template_item_id: item.template_item_id,
-            process_response_id: processResponseId,
-            proceso: processAudit,
-            titulo: tituloAccion,
-            descripcion: descripcionAccion,
-            responsable: processAudit,
-            fecha_compromiso: dueDate.toISOString().slice(0, 10),
-            prioridad,
-            estado: 'pendiente',
-            estado_validacion: 'pendiente_validacion',
-          })
-
-        if (insertActionError) throw insertActionError
-      }
-    }
-
-    const { error } = await supabase.rpc('sync_process_finding_action', {
+    // IMPORTANTE:
+    // En la evaluación por proceso NO enviamos response_id al RPC.
+    // La tabla findings tiene una restricción única para hallazgos automáticos por response_id
+    // (idx_findings_unique_response_auto). Si mandamos el response_id general, el hallazgo
+    // por proceso puede chocar con un hallazgo general ya existente. El vínculo específico
+    // debe quedar por template_item_id + proceso + process_response_id.
+    const payload = {
       target_audit_id: auditId,
       target_template_item_id: item.template_item_id,
-      target_response_id: item.response_id || null,
+      target_response_id: null,
       target_process_response_id: processResponseId,
       target_proceso: processAudit,
       target_calificacion: value,
       target_codigo_punto: item.codigo_punto || null,
       target_criterio: item.criterio || null,
       target_es_critico: Boolean(item.es_critico),
-    })
-
-    if (error) {
-      console.warn('RPC sync_process_finding_action falló. Se intentará sincronización directa:', error.message)
-
-      try {
-        await directSync()
-      } catch (directError) {
-        console.error(directError)
-        alert(`La calificación se guardó, pero no se pudo generar el hallazgo/acción por proceso: ${directError.message}`)
-      }
     }
+
+    const { error } = await supabase.rpc('sync_process_finding_action', payload)
+
+    if (!error) return
+
+    const duplicateError =
+      String(error.message || '').includes('idx_findings_unique_response_auto') ||
+      String(error.message || '').toLowerCase().includes('duplicate key')
+
+    if (duplicateError) {
+      console.warn(
+        'Se evitó duplicar hallazgo automático por response_id. Reintentando sincronización por proceso sin response_id general.',
+        error.message,
+      )
+
+      const { error: retryError } = await supabase.rpc('sync_process_finding_action', {
+        ...payload,
+        target_response_id: null,
+      })
+
+      if (!retryError) return
+
+      console.warn('Reintento de sincronización por proceso falló:', retryError.message)
+      return
+    }
+
+    console.warn('No se pudo sincronizar hallazgo/acción por proceso:', error.message)
   }
 
   const updateProcessRating = async (item, value) => {
