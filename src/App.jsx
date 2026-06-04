@@ -2842,8 +2842,8 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
         titulo: actionTitle,
         descripcion: actionDescription,
         prioridad: item.es_critico || value === '0' ? 'alta' : 'media',
-        estado: isFindingValue ? 'pendiente' : 'cerrada',
-        fecha_cierre: isFindingValue ? null : new Date().toISOString().slice(0, 10),
+        estado: 'pendiente',
+        fecha_cierre: null,
         updated_at: new Date().toISOString(),
       }
 
@@ -2854,6 +2854,67 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
 
       if (error) {
         console.warn('No se pudo actualizar acción por proceso:', error.message)
+      }
+    }
+
+    const removeAutomaticProcessFindingAction = async (existingFinding) => {
+      if (!existingFinding?.id) return
+
+      const existingAction = await findExistingProcessAction(existingFinding.id)
+
+      if (existingAction?.id) {
+        const { data: actionFiles, error: filesError } = await supabase
+          .from('attachments')
+          .select('id')
+          .eq('action_id', existingAction.id)
+          .limit(1)
+
+        if (filesError) {
+          console.warn('No se pudo validar evidencia antes de quitar acción:', filesError.message)
+        }
+
+        const hasFiles = Array.isArray(actionFiles) && actionFiles.length > 0
+        const hasComment = Boolean(String(existingAction.comentarios || '').trim())
+        const isAutomaticProcessAction = existingAction.automatico !== false
+
+        if (!hasFiles && !hasComment && isAutomaticProcessAction) {
+          const { error: deleteActionError } = await supabase
+            .from('actions')
+            .delete()
+            .eq('id', existingAction.id)
+
+          if (deleteActionError) {
+            console.warn('No se pudo quitar acción automática por proceso:', deleteActionError.message)
+            return
+          }
+        } else {
+          console.warn(
+            'La acción automática por proceso ya tiene seguimiento/evidencia; no se cerrará automáticamente desde el checklist.',
+          )
+          return
+        }
+      }
+
+      const { data: remainingActions, error: remainingError } = await supabase
+        .from('actions')
+        .select('id')
+        .eq('finding_id', existingFinding.id)
+        .limit(1)
+
+      if (remainingError) {
+        console.warn('No se pudo validar si quedan acciones ligadas al hallazgo:', remainingError.message)
+        return
+      }
+
+      if (!remainingActions || remainingActions.length === 0) {
+        const { error: deleteFindingError } = await supabase
+          .from('findings')
+          .delete()
+          .eq('id', existingFinding.id)
+
+        if (deleteFindingError) {
+          console.warn('No se pudo quitar hallazgo automático por proceso:', deleteFindingError.message)
+        }
       }
     }
 
@@ -2886,15 +2947,7 @@ function AuditDetail({ auditId, onBack, onRefreshDashboard }) {
 
       if (!isFindingValue) {
         if (existingFinding?.id) {
-          await updateFindingSafely(existingFinding.id, {
-            ...findingPayload,
-            estado: 'cerrado',
-          })
-
-          const existingAction = await findExistingProcessAction(existingFinding.id)
-          if (existingAction?.id) {
-            await updateActionSafely(existingAction.id)
-          }
+          await removeAutomaticProcessFindingAction(existingFinding)
         }
 
         return
